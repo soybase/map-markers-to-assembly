@@ -113,6 +113,6 @@ mkdir -p $MRK_TO_DIR
 echo "== Filter BLAST output and write new marker file (as a tsv file)"
 cat blastout/$MRK_BASE.x.$TO_GNM_BASE.bln | 
   awk '$4>=90 && $14>=90' | top_line.awk | sort -k2,2 -k9n,9n | 
-  filter_marker_blast_data.awk > $MRK_TO_DIR/$MRK_TO_BASE.tsv
+  filter_marker_blast_data.awk > $MRK_TO_DIR/$MRK_TO_BASE
 
 # TO DO: Reformat into gff3, with user-specified molecule prefix (col1) and source (col2).
