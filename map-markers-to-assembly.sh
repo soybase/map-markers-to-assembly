@@ -108,9 +108,7 @@ blastn -db blastdb/$TO_GNM_BASE \
 MRK_TO_BASE=`basename $marker_to_file`
 MRK_TO_DIR=`dirname $marker_to_file`
 
-if [[ !d $MRK_TO_DIR ]]; then
-  mkdir -p $MRK_TO_DIR
-fi
+mkdir -p $MRK_TO_DIR
 
 echo "== Filter BLAST output and write new marker file (as a tsv file)"
 cat blastout/$MRK_BASE.x.$TO_GNM_BASE.bln | 
