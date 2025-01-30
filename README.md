@@ -1,10 +1,11 @@
 # map-markers-to-assembly
 
-This little workflow is driven by the shell script map-markers-to-assembly.sh.
+This little workflow is driven by the shell script map-markers.sh.
 
 It extracts flanking sequence around a SNP marker from one genome assembly, then searches for the 
 best corresponding sequence in a second assembly, and reports the locations of the SNP 
 marker in the second assembly.
+Additionally, the process reports the reference allele for each variant in the FROM and the TO genomes.
 
 The following are the main steps:
 
@@ -12,45 +13,72 @@ The following are the main steps:
   * Put the marker information into four-column BED format, with 1000 bases on each side of the SNP;
   * Extract the sequences from the FROM genome;
   * Run BLAST against the TO genome;
-  * Filter BLAST output and writes new marker file (as a tsv file).
+  * Filter BLAST output and writes new marker file (as a gff3 file).
 
 The dependencies are:
   * samtools 
   * bedtools 
+  * BioPerl
   * blast+
 
-and three scripts in the bin directory:
-  * filter_marker_blast_data.awk
-  * marker_gff_to_bed.pl
+and four scripts in the bin directory:
+  * map-markers.sh
+  * marker_blast_to_gff.pl
+  * marker_gff_to_bed_and_var.pl
   * top_line.awk
 
+```bash
+NAME
+  map-markers-to-assembly.sh  -- Given a file of marker locations in one genome, report the
+    locations of those markers in a second genome.
 
-OPERANDS
+SYNOPSIS
+  map-markers.sh  -c CONFIG_FILE
+
+  Required:
+           -c (path to the config file)
+
+  Options: -h help
+
+VARIABLES set in config file:
+  All input files should be compressed (bgzip). The two genome files will be uncompressed in the work directory,
+  as part of this script. The primary intended use of the script is on the same file system as the data files,
+  in which case the starting files can be copied into the work directory. If they are coming from a remote
+  remote location, one solution would be to pull the files locally into a data directory using scp or equivalent.
+
+    marker_from - Full filepath to file with marker names and locations on first Genome; in gff3 format, compressed
+
+    genome_from - Full filepath to first genome assembly, corresponding with the coordinates in the marker_from file; compressed
+    genome_to   - Full filepath to the second genome assembly, to which the markers will be projected
+
+    marker_to   - Name for new marker file (gff3); will be written to work_dir/marker_to/
+
+    gff_source  - String to use for the gff3 source (column 2); typically, a project, data source, or program
+    gff_type   - String to use for the gff3 type (column 3), e.g. "genetic_marker" or other SOFA sequence ontology term
+    gff_ID_prefix - String to use for the gff3 type (column 3), e.g. "genetic_marker" or other SOFA sequence ontology term
+
+    identity    - Minimum percent identity in range 0..100 for blastn qcovhsp [90]
+    sample_len  - Maximum length of sequence variant to report, as a sample, in the GFF 9th column [10]
+    max_len     - Maximum variant length for which to report a GFF line [200]
+
+    work_dir    - work directory; default work_dir
 ```
-  Paths to four files (including the new marker-locations file to be created),
-  and number of threads to use in blast search
-    marker_locs    - Path to file of marker names and locations on Genome assembly 1; in gff3 format
-    genome_from    - Path to genome assembly 1, corresponding with the coordinates in the marker_locs file
-    genome_to      - Path to genome assembly 2, to which the markers will be projected
-    marker_to_file - Path for the marker-locations file to be created; may include a directory path
-    threads        - Number of threads to use in blast search
-```
 
-Note that the genome files will be uncompressed (gunzip) if they are in a compressed state,
-as the bedtools getfasta command sometimes fails on compressed data.
+The workflow should generally not be especially computationally intensive, but in a HPC environment,
+it should be called using a job manager -- either interactively or via a job submission script.
 
-In a multiprocessor machine with job management, the script should be called with 
-a batch script, for example like the following:
-```
-  module load samtools bedtools blast+
+For example, interactively:
 
-  marker_locs=markers/FILE.gff3.gz
-  genome_from=genomes/GENOME1/FILE.fna.gz
-  genome_to=genomes/GENOME2/FILE.fna.gz
-  marker_to_file=markers/FILE_NEW.tsv
-  threads=20
+```bash
+  salloc
 
-  ./map-markers-to-assembly.sh $marker_locs $genome_from $genome_to $marker_to_file $threads
+  module load miniconda
+
+  source activate ds-curate
+
+  PATH=$PWD/bin:$PATH
+
+  map-markers.sh -c config/gnm1_to_gnm2.conf 
 ```
 
 
