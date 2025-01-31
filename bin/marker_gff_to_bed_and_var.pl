@@ -9,9 +9,10 @@ use Bio::DB::Fasta;
 use feature "say";
 
 my $usage = <<EOS;
-  Synopsis: cat GFF_FILE.gff3 | marker_gff_to_bed_and_var.pl -genome GENOME_FILE [options]
-  
-  Read marker coordinates in GFF format and a genome file (uncompressed), with samtools faidx index.
+  Synopsis: marker_gff_to_bed_and_var.pl -markers MARKER_FILE -genome GENOME_FILE -out OUT_FILE [options]
+ 
+  Read marker coordinates in GFF format (compressed or uncompressed) and 
+  a genome file (uncompressed), with samtools faidx index.
   Return a four-column BED file with genomic coordinates flanking the marker coordinates,
   plus the sequence (presumably the marker variant) under those coordinates.
   Adjust from GFF 1-based, closed [start, end] to BED 0-based, half-open [start-1, end)
@@ -28,46 +29,58 @@ my $usage = <<EOS;
   will be set to the length of that molecule.
   
   Required:
-    stream of GFF data on STDIN
+    -markers GFF file (either compressed or not)
     -genome  Genome file corresponding with GFF file. Should be uncompressed, and with accompanying index file.
+    -out     Name for output file (bed), sans extension. Two files will be written: FILE.bed and FILE.UD.bed
+               FILE.bed    with  seqID, marker name, coordinates, and allele sequence
+               FILE.UD.bed with  seqID, marker name.UP, coordinates
+                                 seqID, marker name.DN, coordinates
        
   Options:
     -pad   The flanking distance up- and down-stream from the marker. Default 1000.
+    -gff_prefix_regex  Regular expression for stripping the genome prefix from the marker IDs, e.g. glyma.Wm82.gnm1.Sat_413 => Sat_413
     -merge (boolean; default false). If set, then one sequence will be returned for each marker;
              otherwise, return one beUP (>ID.UP), one DNer (>ID.DN).
-    -out   File to write to; otherwise, to stdout.
     -verbose (boolean) Some debug output, marked with "=="
     -help  (boolean) This message.
 EOS
 
-my ($genome_file, $out_file, $merge, $verbose, $help);
+my ($genome_file, $marker_file, $out_file, $merge, $verbose, $help);
 my $pad = 1000;
+my $gff_prefix_regex="^[^.]+\.[^.]+\.[^.]+\.";
 
 GetOptions (
-  "genome=s" =>  \$genome_file,   
-  "pad:i"    =>  \$pad,  
-  "merge"    =>  \$merge,
-  "out:s"    =>  \$out_file,   
-  "verbose"  =>  \$verbose,
-  "help"     =>  \$help,
+  "genome=s"  =>  \$genome_file,   
+  "markers=s" =>  \$marker_file,   
+  "out=s"     =>  \$out_file,   
+  "pad:i"     =>  \$pad,  
+  "merge"     =>  \$merge,
+  "out:s"     =>  \$out_file,   
+  "gff_prefix_regex:s" => \$gff_prefix_regex,
+  "verbose"   =>  \$verbose,
+  "help"      =>  \$help,
 );
 
-die "$usage" unless $genome_file;
-die "$usage" unless -e "$genome_file.fai";
+die "$usage\nPlease specify a genome assembly with -genome\n" unless $genome_file;
+die "$usage\nPlease specify a marker file with -marker\n" unless $genome_file;
+die "$usage\nPlease specify an output filename (sans extension) with -out\n" unless -e "$genome_file.fai";
 die "$usage" if $help;
-if ($genome_file){
-  die "Can't open in $genome_file: $!\n" unless (-f $genome_file);
-}
+die "Can't open in $genome_file: $!\n" unless (-f $genome_file);
 
 open my $FAI_FH, "<", "$genome_file.fai" or die "Can't open in $genome_file.fai: $!\n";
 
-my $OUT_FH;
-if ( $out_file ){
-  open ( $OUT_FH, ">", $out_file ) or die "Can't open out $out_file: $!\n";
-}
-else {
-  open ( $OUT_FH, ">&", \*STDOUT) or die;
-}
+# Strip extension in case one was specified (against instructions)
+my $mrk_file_base = $out_file;
+$mrk_file_base =~ s/\.bed$//;
+$mrk_file_base =~ s/\.gff3?$//;
+
+my ($BED_FH, $BED_UD_FH);
+open ( $BED_FH, ">", "$mrk_file_base.bed" ) or die "Can't open out $mrk_file_base.bed$!\n";
+open ( $BED_UD_FH, ">", "$mrk_file_base.UD.bed") or die "Can't open out $mrk_file_base.UD.bed: $!\n";
+
+my $REX;
+if ($gff_prefix_regex){ $REX=qr/$gff_prefix_regex/ }
+else { $REX=qr/$/ }
 
 # Read in fai file and get molecule lengths
 my %seqID_len;
@@ -82,8 +95,17 @@ while (<$FAI_FH>) {
 # Load genome into bioperl object
 my $db = Bio::DB::Fasta->new($genome_file);
 
+# Read in the sequence
+my $MRK_FH;
+if ( $marker_file =~ /gz$/ ){
+  open( $MRK_FH, "zcat $marker_file|" ) or die "Can't do zcat $marker_file| : $!";
+}
+else {
+  open ( $MRK_FH, "<", $marker_file ) or die "Can't open in $marker_file: $!\n";
+}
+
 # Read in the GFF;
-while (<>) {
+while (<$MRK_FH>) {
   s/\r?\n\z//; # CRLF to LF
   chomp;
   my $line = $_;
@@ -113,13 +135,22 @@ while (<>) {
     }
 
     my $pad_end = min($mrk_end+$pad, $seqID_len{$seqID});
+    my $variant = $db->seq($seqID, $mrk_start+1, $mrk_end);
+
+    # Strip prefix from ID from the marker IDs in the bed file with variants
+    my $name=$mrk_id;
+    $name =~ s/$REX//;
+
     if ($merge){ # Return one sequence per marker, including flanking upstream and down (in BED coords)
-      say $OUT_FH join("\t", $seqID, $pad_start, $pad_end, $mrk_id);
+      say $BED_UD_FH join("\t", $seqID, $pad_start, $pad_end, $mrk_id);
+
+      say $BED_FH    join("\t", $seqID, $pad_start, $pad_end, $name, $variant);
     }
     else { # Return two sequences per marker: one upstream, one down (in BED coords)
-      my $variant = $db->seq($seqID, $mrk_start+1, $mrk_end);
-      say $OUT_FH join("\t", $seqID, $pad_start, $mrk_start, "$mrk_id.UP", $variant);
-      say $OUT_FH join("\t", $seqID, $mrk_end, $pad_end, "$mrk_id.DN", $variant);
+      say $BED_UD_FH join("\t", $seqID, $pad_start, $mrk_start, "$mrk_id.UP");
+      say $BED_UD_FH join("\t", $seqID, $mrk_end, $pad_end, "$mrk_id.DN");
+
+      say $BED_FH    join("\t", $seqID, $mrk_end, $pad_end, $name, $variant);
     }
   }
 }
@@ -131,3 +162,5 @@ Steven Cannon
 2023-11-28 Add -verbose flag and some debug reporting
 2015-01-22 Remove 1-padding from $mrk_end. Add option for reporting variant sequence
 2025-01-28 Make reporting of variant sequence non-optional
+2025-01-31 Report two types of BED files -- one with .UP and .DN for each marker, and one with the seq variant
+

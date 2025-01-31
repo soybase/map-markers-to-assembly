@@ -51,10 +51,13 @@ VARIABLES set in config file:
     genome_from - Full filepath to first genome assembly, corresponding with the coordinates in the marker_from file; compressed
     genome_to   - Full filepath to the second genome assembly, to which the markers will be projected
 
-    marker_to   - Name for new marker file (gff3); will be written to work_dir/marker_to/
+    marker_work - Name for intermediate/working marker file (bed), based on marker_from, sans extension. 
+                    Two files will be written: FILE.bed and FILE.UD.bed
+
+    marker_to   - Name for new marker files, sans extension. Two files will be written: FILE.bed and FILE.gff3
 
     gff_source  - String to use for the gff3 source (column 2); typically, a project, data source, or program
-    gff_type   - String to use for the gff3 type (column 3), e.g. "genetic_marker" or other SOFA sequence ontology term
+    gff_type    - String to use for the gff3 type (column 3), e.g. "genetic_marker" or other SOFA sequence ontology term
     gff_ID_prefix - String to use for the gff3 type (column 3), e.g. "genetic_marker" or other SOFA sequence ontology term
 
     identity    - Minimum percent identity in range 0..100 for blastn qcovhsp [90]

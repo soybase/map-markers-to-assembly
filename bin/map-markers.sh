@@ -118,8 +118,10 @@ cat_or_zcat() {
 
 echo
 echo "== Copy files into work directory. Uncompress and index where needed."
-mkdir -p "${work_dir}"
-cd "${work_dir}" || exit
+
+WD=`realpath $work_dir`
+mkdir -p "${WD}"
+cd "${WD}" || exit
 
 mkdir -p marker_from
 mkdir -p genome_from
@@ -138,7 +140,6 @@ fi
 if [ ! -f genome_from/$GNM_FROM_BASE.gz ] || [ ! -f genome_from/$GNM_FROM_BASE ]; then
   cp $genome_from genome_from/$GNM_FROM_BASE.gz || exit
 
-  echo genome_from/$GNM_FROM_BASE
   if [ ! -f genome_from/$GNM_FROM_BASE ]; then
     gunzip genome_from/$GNM_FROM_BASE.gz
   fi
@@ -156,23 +157,27 @@ if [ ! -f genome_to/$GNM_TO_BASE.gz ] || [ ! -f genome_to/$GNM_TO_BASE ]; then
   fi
 fi
 
-if [ ! -f marker_to/$MRK_BASE.1kflank.fna ]; then
+MRK_FR_BARE="${MRK_BASE%.*}"
+if [ ! -f marker_to/$MRK_FR_BARE.1kflank.fna ]; then
   echo
   echo "== Put the marker information into four-column BED format, with 1000 bases on each side of the SNP."
   echo "== Need to adjust from GFF 1-based, closed [start, end] to BED 0-based, half-open [start-1, end)."
   echo "== Special-casing near the molecule start with script marker_gff_to_bed_and_var.pl."
-  cat_or_zcat marker_from/$MRK_BASE.gz | marker_gff_to_bed_and_var.pl -genome genome_from/$GNM_FROM_BASE -out marker_from/$MRK_BASE.bed
+    marker_gff_to_bed_and_var.pl -marker $marker_from \
+                                 -genome genome_from/$GNM_FROM_BASE \
+                                 -out "$WD/marker_from/$MRK_FR_BARE"
   
   echo
   echo "== Extract the sequences from the FROM genome"
+
   bedtools getfasta -fi genome_from/$GNM_FROM_BASE \
-                    -bed marker_from/$MRK_BASE.bed \
+                    -bed marker_from/$MRK_FR_BARE.UD.bed \
                     -name \
-                    -fo marker_to/$MRK_BASE.1kflank.fna
+                    -fo marker_to/$MRK_FR_BARE.1kflank.fna
   
   echo
   echo "== Strip positional information, added by getfasta, from the retrieved sequence"
-  perl -pi -e 's/>(\S+)::.+/>$1/' marker_to/$MRK_BASE.1kflank.fna
+  perl -pi -e 's/>(\S+)::.+/>$1/' marker_to/$MRK_FR_BARE.1kflank.fna
 else 
   echo "Skipping creation of BED file and extraction of flanking sequence, since it exists."
 fi
@@ -188,24 +193,40 @@ if [ ! -f blastdb/$GNM_TO_BASE.nin ]; then
                 -title $GNM_TO_BASE -hash_index -out blastdb/$GNM_TO_BASE
 fi
 
-if [ ! -f blastout/$MRK_BASE.x.$GNM_TO_BASE.bln ]; then
+if [ ! -f blastout/$MRK_FR_BARE.x.$GNM_TO_BASE.bln ]; then
   echo
   echo "== Run BLAST"
   blastn -db blastdb/$GNM_TO_BASE \
-         -query marker_to/$MRK_BASE.1kflank.fna \
+         -query marker_to/$MRK_FR_BARE.1kflank.fna \
          -num_threads $NPROC -evalue 1e-10 -perc_identity 99 \
          -outfmt "6 std qlen qcovs" \
-         -out blastout/$MRK_BASE.x.$GNM_TO_BASE.bln
+         -out blastout/$MRK_FR_BARE.x.$GNM_TO_BASE.bln
 else 
   echo "== Skipping BLAST, as the output file exists."
 fi
 
 echo
 echo "== Filter BLAST output and write new marker file (as a tsv file)"
-cat blastout/$MRK_BASE.x.$GNM_TO_BASE.bln | top_line.awk | 
+cat blastout/$MRK_FR_BARE.x.$GNM_TO_BASE.bln | top_line.awk | 
   marker_blast_to_gff.pl -genome genome_to/$GNM_TO_BASE \
                          -gff_source $gff_source \
                          -gff_type $gff_type \
-                         -gff_ID_prefix $gff_ID_prefix > marker_to/$marker_to
+                         -gff_ID_prefix $gff_ID_prefix \
+                         -out "$WD/marker_to/$marker_to"
+
+echo "== Compare markers in FROM and TO"
+
+echo FR: $MRK_FR_BARE
+echo TO: $marker_to
+
+cut -f4,5 "$WD/marker_from/$MRK_FR_BARE.bed" | sort > "$WD/marker_to/lis.$MRK_FR_BARE"
+cut -f4,5 "$WD/marker_to/$marker_to.bed"  | sort > "$WD/marker_to/lis.$marker_to"
+join -a1 "$WD/marker_to/lis.$MRK_FR_BARE" "$WD/marker_to/lis.$marker_to" |
+  perl -pe 's/ /\t/g' > "$WD/marker_to/lis.FR_TO.join.tsv"
+
+comm <(cut -f1 "$WD/marker_to/lis.$MRK_FR_BARE") <(cut -f1 "$WD/marker_to/lis.$marker_to") > "$WD/marker_to/lis.FR_TO.comm.tsv"
+
+echo
+echo "== Run completed. Look for results at $WD/marker_to/"
 
 exit 0

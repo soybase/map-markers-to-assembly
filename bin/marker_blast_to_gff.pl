@@ -8,7 +8,7 @@ use Bio::DB::Fasta;
 use feature "say";
 
 my $usage = <<EOS;
-  Synopsis: cat BLAST-OUTPUT | top_line.awk | marker_blast_to_gff.pl -genome GENOME_FILE [options]
+  Synopsis: cat BLAST-OUTPUT | top_line.awk | marker_blast_to_gff.pl -genome GENOME_FILE -out FILE_BASE [options]
 
    filter_marker_blast_data.awk - Given input data consisting of blastn in tabular -m8 format,
    in which the query IDs have a suffix of ".UP" or ".DN", e.g.,
@@ -34,7 +34,8 @@ my $usage = <<EOS;
 
   Required:
     STDIN with BLAST output, created with -outfmt "6 std qlen qcovhsp"
-    -genome  Genome file in which variants described by the GFF are found (uncompressed)
+    -genome      Genome file in which variants described by the GFF are found (uncompressed)
+    -out         Name for new marker files, sans extension. Two files will be written: FILE.bed and FILE.gff3
     
   Options:   
     -identity  Percent identity in range 0..100 [90]
@@ -44,11 +45,10 @@ my $usage = <<EOS;
                    SSRs are expected to be longer, but very long matches probably indicate either
                    poor or repetitive matches of the flanking sequences, or large genomic rearrangements.
     -gff_source  String to use for the gff3 source (column 2); typically, a project, data source, or program
-    -gff_type    String to use for the gff3 type (column 3), e.g. "genetic_marker" or other SOFA sequence ontology term
-    -gff_ID_prefix   String to use for the gff3 type (column 3), e.g. "genetic_marker" or other SOFA sequence ontology term
-    -out   File to write to; otherwise, to stdout.
-    -verbose (boolean) Some debug output, marked with "=="
-    -help  (boolean) This message.
+    -gff_type    String to use for the gff3 type (column 3), e.g. "genetic_marker" or other sequence ontology term
+    -gff_prefix_regex  Regular expression for stripping the genome prefix from the marker IDs, e.g. glyma.Wm82.gnm1.Sat_413 => Sat_413
+    -verbose     (boolean) Some debug output, marked with "=="
+    -help        (boolean) This message.
 EOS
 
 my ($genome_file, $out_file, $verbose, $help);
@@ -58,10 +58,11 @@ my $max_len=200;
 my $gff_source="map-markers-to-assembly";
 my $gff_type="genetic_marker";
 my $gff_ID_prefix="TARGET_GENOME_VERSION";
-my $gff_prefix_regex="(^[^.]+\.[^.]+\.[^.]+\.)";
+my $gff_prefix_regex="^[^.]+\.[^.]+\.[^.]+\.";
 
 GetOptions (
   "genome=s"     => \$genome_file,   
+  "out=s"        => \$out_file,   
   "identity:i"   => \$identity,
   "sample_len:i" => \$sample_len,
   "max_len:i"    => \$max_len,
@@ -69,22 +70,21 @@ GetOptions (
   "gff_type:s"   => \$gff_type,
   "gff_ID_prefix:s" => \$gff_ID_prefix,
   "gff_prefix_regex:s" => \$gff_prefix_regex,
-  "out:s"        => \$out_file,   
   "verbose"      => \$verbose,
   "help"         => \$help,
 );
 
 die "$usage" if $help;
-die "$usage" unless $genome_file;
+die "$usage\nPlease specify a GFF output filename with -out\n" unless $out_file;
+die "$usage\nPlease specify a genome assembly with -genome\n" unless $genome_file;
 die "Can't open in $genome_file: $!\n" unless (-f $genome_file);
 
-my $OUT_FH;
-if ( $out_file ){
-  open ( $OUT_FH, ">", $out_file ) or die "Can't open out $out_file: $!\n";
-}
-else {
-  open ( $OUT_FH, ">&", \*STDOUT) or die;
-}
+my $gff_file_base = $out_file;
+$gff_file_base =~ s/\.gff3?$//;
+
+my ($GFF_FH, $BED_FH);
+open ( $GFF_FH, ">", "$gff_file_base.gff3" ) or die "Can't open out $gff_file_base.gff3: $!\n";
+open ( $BED_FH, ">", "$gff_file_base.bed") or die "Can't open out $gff_file_base.bed: $!\n";
 
 my $REX;
 if ($gff_prefix_regex){ $REX=qr/$gff_prefix_regex/ }
@@ -114,24 +114,24 @@ while (<>) {
 
   if (defined $prev_base && $base_id eq $prev_base) {
     if ($this_start > $prev_end && $up_or_dn =~ /DN$/) { # forward-forward
-      #my $variant = $db->seq($seqID, $prev_end + 1, $this_start - 1);
-      my $variant = get_variant($seqID, $prev_end + 1, $this_start - 1);
-      if ($variant =~ /WARN/){
-        warn "Skipping marker $base_id: $variant";
+      my ($short_var, $full_var) = get_variant($seqID, $prev_end + 1, $this_start - 1);
+      if ($short_var =~ /WARN/){
+        warn "Skipping marker $base_id: $short_var";
         next;
       }
-      my $ninth = "ID=$gff_ID_prefix$base_id;Name=$name;ref_allele=$variant";
-      say join("\t", $seqID, $gff_source, $gff_type, $prev_end + 1, $this_start - 1, ".", ".", "+", $ninth );
+      my $ninth = "ID=$gff_ID_prefix$name;Name=$name;ref_allele=$short_var";
+      say $GFF_FH join("\t", $seqID, $gff_source, $gff_type, $prev_end + 1, $this_start - 1, ".", ".", "+", $ninth );
+      say $BED_FH join("\t", $seqID, $prev_end + 1, $this_start - 1, $name, $full_var);
     } 
     elsif ($this_start <= $prev_end && $up_or_dn =~ /DN$/) { # forward-reverse
-      #my $variant = $db->seq($seqID, $this_end + 1, $prev_start - 1);
-      my $variant = get_variant($seqID, $prev_end + 1, $this_start - 1);
-      if ($variant =~ /WARN/){
-        warn "Skipping marker $base_id: $variant";
+      my ($short_var, $full_var) = get_variant($seqID, $prev_end + 1, $this_start - 1);
+      if ($short_var =~ /WARN/){
+        warn "Skipping marker $base_id: $short_var";
         next;
       }
-      my $ninth = "ID=$gff_ID_prefix$base_id;Name=$name;ref_allele=$variant";
-      say join("\t", $seqID, $gff_source, $gff_type, $this_end + 1, $prev_start - 1, ".", ".", "-", $ninth );
+      my $ninth = "ID=$gff_ID_prefix$name;Name=$name;ref_allele=$short_var";
+      say $GFF_FH join("\t", $seqID, $gff_source, $gff_type, $this_end + 1, $prev_start - 1, ".", ".", "-", $ninth );
+      say $BED_FH join("\t", $seqID, $this_end + 1, $prev_start - 1, $name, $full_var);
     }
   }
 
@@ -142,6 +142,8 @@ while (<>) {
     $prev_end = $F[9];
   }
 }
+
+#####################
 
 sub get_variant {
   my ($id, $start, $end) = @_;
@@ -156,9 +158,10 @@ sub get_variant {
     $seq = substr($full_seq, 0, $max_len);
     $seq = "WARNING variant is_$len" . " nt. First $max_len nt are " . $seq;
   }
-  return($seq);
+  return($seq, $full_seq);
 }
 __END__
 
 Steven Cannon
 2025-01-29 Start 
+2025-01-31 Require GFF output filename and also print to a derived bed file.
