@@ -214,19 +214,35 @@ cat blastout/$MRK_FR_BARE.x.$GNM_TO_BASE.bln | top_line.awk |
                          -gff_ID_prefix $gff_ID_prefix \
                          -out "$WD/marker_to/$marker_to"
 
-echo "== Compare markers in FROM and TO"
-
-echo FR: $MRK_FR_BARE
-echo TO: $marker_to
+echo
+echo "== Compare the initial and mapped markers and report"
+echo "==   Marker list 1: $work_dir/marker_to/lis.$MRK_FR_BARE"
+echo "==   Marker list 2: $work_dir/marker_to/lis.$marker_to"
+echo "==   Marker report: $work_dir/marker_to/report.${MRK_FR_BARE}--${marker_to}.tsv"
 
 cut -f4,5 "$WD/marker_from/$MRK_FR_BARE.bed" | sort > "$WD/marker_to/lis.$MRK_FR_BARE"
 cut -f4,5 "$WD/marker_to/$marker_to.bed"  | sort > "$WD/marker_to/lis.$marker_to"
-join -a1 "$WD/marker_to/lis.$MRK_FR_BARE" "$WD/marker_to/lis.$marker_to" |
-  perl -pe 's/ /\t/g' > "$WD/marker_to/lis.FR_TO.join.tsv"
 
-comm <(cut -f1 "$WD/marker_to/lis.$MRK_FR_BARE") <(cut -f1 "$WD/marker_to/lis.$marker_to") > "$WD/marker_to/lis.FR_TO.comm.tsv"
+join -a1 "$WD/marker_to/lis.$MRK_FR_BARE" "$WD/marker_to/lis.$marker_to" |
+  perl -F"\s" -lane 'if (scalar(@F)==2){
+                       print join( "\t", $F[0], "NULL", length($F[1]), 0, $F[1], "NULL");
+                     }
+                     else {
+                       if ($F[1] eq $F[2]){
+                         print join( "\t", $F[0], "same", length($F[1]), ,length($F[2]), $F[1], $F[2]);
+                       }
+                       else {
+                         print join( "\t", $F[0], "NOT", length($F[1]), ,length($F[2]), $F[1], $F[2]);
+                       }
+                     }
+                    '  > "$WD/marker_to/report.${MRK_FR_BARE}--${marker_to}.tsv"
 
 echo
-echo "== Run completed. Look for results at $WD/marker_to/"
+echo "== Mapped markers:"
+echo "==   $work_dir/marker_to/glyma.Wm82.gnm4.mrk.SoySSR.bed"
+echo "==   $work_dir/marker_to/glyma.Wm82.gnm4.mrk.SoySSR.gff3"
+echo
+echo "== Run completed. Look for results at $work_dir/marker_to/"
+echo
 
 exit 0
