@@ -1,0 +1,10 @@
+name: map-markers
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - bash
+  - samtools
+  - bedtools
+  - blast+
+  - perl-bioperl-core
