@@ -35,7 +35,7 @@ my $usage = <<EOS;
   Required:
     STDIN with BLAST output, created with -outfmt "6 std qlen qcovhsp"
     -genome      Genome file in which variants described by the GFF are found (uncompressed)
-    -out         Name for new marker files, sans extension. Two files will be written: FILE.bed and FILE.gff3
+    -out         Name for new marker files, sans extension. Three files will be written: .bed, .gff3, .log
     
   Options:   
     -identity  Percent identity in range 0..100 [90]
@@ -82,15 +82,18 @@ die "Can't open in $genome_file: $!\n" unless (-f $genome_file);
 my $gff_file_base = $out_file;
 $gff_file_base =~ s/\.gff3?$//;
 
-my ($GFF_FH, $BED_FH);
+my ($GFF_FH, $BED_FH, $LOG_FH);
 open ( $GFF_FH, ">", "$gff_file_base.gff3" ) or die "Can't open out $gff_file_base.gff3: $!\n";
 open ( $BED_FH, ">", "$gff_file_base.bed") or die "Can't open out $gff_file_base.bed: $!\n";
+open ( $LOG_FH, ">", "$gff_file_base.log") or die "Can't open out $gff_file_base.log: $!\n";
 
 my $REX;
 if ($gff_prefix_regex){ $REX=qr/$gff_prefix_regex/ }
 else { $REX=qr/$/ }
 
 my ($prev_UD, $prev_base, $prev_start, $prev_end);
+my %seen_markID;
+my %seen_skippedID;
 
 # Load genome into bioperl object
 my $db = Bio::DB::Fasta->new($genome_file);
@@ -98,6 +101,7 @@ my $db = Bio::DB::Fasta->new($genome_file);
 # Read in the BLAST output and process
 while (<>) {
   chomp;
+  next if /^#/;
   my @F = split /\t/;
   my ($markID_UD, $seqID, $this_start, $this_end, $qcovhsp) = 
     ($F[0], $F[1], $F[8], $F[9], $F[13]);
@@ -108,15 +112,25 @@ while (<>) {
   my $name=$base_id;
   $name =~ s/$REX//;
 
+  unless ($seen_markID{$name}){ $seen_markID{$name}++; }
+
   if ($qcovhsp < $identity){
-    warn "== skipping $markID_UD because qcovhsp<identity: $qcovhsp<$identity\n";
+    if ($verbose){
+      say "== Skipping $name $up_or_dn bbecause qcovhsp<identity: $qcovhsp<$identity";
+    }
+    say $LOG_FH "Skipping $name $up_or_dn because qcovhsp<identity: $qcovhsp<$identity";
+    unless ($seen_skippedID{$name}){ $seen_skippedID{$name}++; }
   }
 
   if (defined $prev_base && $base_id eq $prev_base) {
     if ($this_start > $prev_end && $up_or_dn =~ /DN$/) { # forward-forward
       my ($short_var, $full_var) = get_variant($seqID, $prev_end + 1, $this_start - 1);
       if ($short_var =~ /WARN/){
-        warn "Skipping marker $base_id: $short_var";
+        if ($verbose){
+          say "== Skipping $name $short_var";
+        }
+        say $LOG_FH "Skipping $name $short_var";
+        unless ($seen_skippedID{$name}){ $seen_skippedID{$name}++; }
         next;
       }
       my $ninth = "ID=$gff_ID_prefix$name;Name=$name;ref_allele=$short_var";
@@ -126,7 +140,11 @@ while (<>) {
     elsif ($this_start <= $prev_end && $up_or_dn =~ /DN$/) { # forward-reverse
       my ($short_var, $full_var) = get_variant($seqID, $prev_end + 1, $this_start - 1);
       if ($short_var =~ /WARN/){
-        warn "Skipping marker $base_id: $short_var";
+        if ($verbose){
+          say "== Skipping $name $short_var";
+        }
+        say $LOG_FH "Skipping $name $short_var";
+        unless ($seen_skippedID{$name}){ $seen_skippedID{$name}++; }
         next;
       }
       my $ninth = "ID=$gff_ID_prefix$name;Name=$name;ref_allele=$short_var";
@@ -143,6 +161,11 @@ while (<>) {
   }
 }
 
+my $ct_markers = scalar(keys %seen_markID);
+my $ct_skipped = scalar(keys %seen_skippedID);
+say "== Of $ct_markers markers, $ct_skipped were skipped as not meeting specified parameters.";
+say "== See log file at $gff_file_base.log";
+
 #####################
 
 sub get_variant {
@@ -156,12 +179,14 @@ sub get_variant {
   }
   if ( $len > $sample_len && $len > $max_len ){
     $seq = substr($full_seq, 0, $max_len);
-    $seq = "WARNING variant is_$len" . " nt. First $max_len nt are " . $seq;
+    $seq = "WARN variant is $len" . " nt. First $max_len nt: " . $seq;
   }
   return($seq, $full_seq);
 }
 __END__
 
 Steven Cannon
-2025-01-29 Start 
+2025-01-29 First functional version.
 2025-01-31 Require GFF output filename and also print to a derived bed file.
+2025-02-04 Print warnings to a log file.
+
