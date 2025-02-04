@@ -27,12 +27,13 @@ SYNOPSIS
 
   Options: -h help
 
-VARIABLES set in config file:
-  All input files should be compressed (bgzip). The two genome files will be uncompressed in the work directory,
-  as part of this script. The primary intended use of the script is on the same file system as the data files,
-  in which case the starting files can be copied into the work directory. If they are coming from a remote 
-  remote location, one solution would be to pull the files locally into a data directory using scp or equivalent.
+  Specify paths to the "from" and "to" genome assemblies and the (gff3) marker file.
+  The two genome files will be uncompressed in the work directory, as part of this script. The primary intended
+  use of the script is on the same file system as the data files, in which case the starting files can be copied 
+  into the work directory. If they are coming from a remote remote location, one solution would be to pull the 
+  files locally into a data directory using scp or equivalent, and then give the paths to those files.
 
+  VARIABLES set in config file:
     marker_from - Full filepath to file with marker names and locations on first Genome; in gff3 format, compressed
 
     genome_from - Full filepath to first genome assembly, corresponding with the coordinates in the marker_from file; compressed
