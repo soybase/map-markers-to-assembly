@@ -22,11 +22,12 @@ The dependencies (see installation instructions below) are:
   * BioPerl
   * blast+
 
-and four scripts in the bin directory:
+and five scripts in the bin directory:
   * map-markers.sh
   * marker_blast_to_gff.pl
   * marker_gff_to_bed_and_var.pl
   * top_line.awk
+  * sort_gff.pl
 
 ```bash
 NAME
