@@ -221,28 +221,32 @@ echo "==   Marker list 1: $work_dir/marker_to/lis.$MRK_FR_BARE"
 echo "==   Marker list 2: $work_dir/marker_to/lis.$marker_to"
 echo "==   Marker report: $work_dir/marker_to/report.${MRK_FR_BARE}--${marker_to}.tsv"
 
-# Extract ID and allele from bed file
-cut -f4,5 "$WD/marker_from/$MRK_FR_BARE.bed" | sort > "$WD/marker_to/lis.$MRK_FR_BARE"
+# Extract ID and allele from the "from" bed file, and print "+" orientation for all
+cat "$WD/marker_from/$MRK_FR_BARE.bed" | awk -v OFS="\t" '{print $4, "+", $5}' | sort > "$WD/marker_to/lis.$MRK_FR_BARE"
 
-# Next: Extract ID, allele, and orientation from gff file
-cut -f8,9 "$WD/marker_to/$marker_to.gff3"  | 
-    perl -pe 's/^(\S)\tID=.+Name=([^;]+);ref_allele=(\w+)/$2\t$3\t$1/' | sort > "$WD/marker_to/lis.$marker_to"
+# Next: Extract ID, allele, and orientation from the "to" bed file
+cut -f4,6,7 "$WD/marker_to/$marker_to.bed" | sort > sort > "$WD/marker_to/lis.$marker_to"
 
+# Fields in joined result: markerID, orient, allele_gnm1, orient, allele_gnm2
+#                              0        1  2  3  4
+#                          ss715578401  +  G  +  G
+#                          ss715578490  +  G  -  C
 join -a1 "$WD/marker_to/lis.$MRK_FR_BARE" "$WD/marker_to/lis.$marker_to" |
   perl -F"\s" -lane 'BEGIN{ print join("\t", "#markerID", "compare", "len1", "len2", "orient", "var1", "var2") };
-                     if (scalar(@F)==2){ # marker not in target genome
-                       print join( "\t", $F[0], "NULL", length($F[1]), 0, ".", $F[1], "NULL");
+                     if (scalar(@F)==3){ # marker not in target genome
+                       print join( "\t", $F[0], "NULL", length($F[2]), 0, ".", $F[2], "NULL");
                      }
                      else {
-                       if ($F[1] eq $F[2]){ # marker is found in both genomes
-                         print join( "\t", $F[0], "same", length($F[1]), length($F[2]), $F[3], $F[1], $F[2]);
+                       if ($F[2] eq $F[4]){ # allele is the same in both genomes
+                         print join( "\t", $F[0], "same", length($F[2]), length($F[4]), $F[3], $F[2], $F[4]);
                        }
                        else {
-                         print join( "\t", $F[0], "NOT", length($F[1]), length($F[2]), $F[3], $F[1], $F[2]);
+                         print join( "\t", $F[0], "NOT",  length($F[2]), length($F[4]), $F[3], $F[2], $F[4]);
                        }
                      }
                     '  > "$WD/marker_to/report.${MRK_FR_BARE}--${marker_to}.tsv"
 
+# TO DO: get allele from bed file rather than gff, or add orientation to bed file
 
 echo
 echo "== Generate report of marker orientations"
