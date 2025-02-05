@@ -225,7 +225,7 @@ echo "==   Marker report: $work_dir/marker_to/report.${MRK_FR_BARE}--${marker_to
 cat "$WD/marker_from/$MRK_FR_BARE.bed" | awk -v OFS="\t" '{print $4, "+", $5}' | sort > "$WD/marker_to/lis.$MRK_FR_BARE"
 
 # Next: Extract ID, allele, and orientation from the "to" bed file
-cut -f4,6,7 "$WD/marker_to/$marker_to.bed" | sort > sort > "$WD/marker_to/lis.$marker_to"
+cut -f4,6,7 "$WD/marker_to/$marker_to.bed" | sort > "$WD/marker_to/lis.$marker_to"
 
 # Fields in joined result: markerID, orient, allele_gnm1, orient, allele_gnm2
 #                              0        1  2  3  4
