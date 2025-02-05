@@ -34,7 +34,7 @@ my $usage = <<EOS;
 
   Required:
     STDIN with BLAST output, created with -outfmt "6 std qlen qcovhsp"
-    -genome      Genome file in which variants described by the GFF are found (uncompressed)
+    -genome      Target genome file in which variants are to be mapped (uncompressed)
     -out         Name for new marker files, sans extension. Three files will be written: .bed, .gff3, .log
     
   Options:   
@@ -121,35 +121,45 @@ while (<>) {
     say $LOG_FH "Skipping $name $up_or_dn because qcovhsp<identity: $qcovhsp<$identity";
     unless ($seen_skippedID{$name}){ $seen_skippedID{$name}++; }
   }
-
-  if (defined $prev_base && $base_id eq $prev_base) {
-    if ($this_start > $prev_end && $up_or_dn =~ /DN$/) { # forward-forward
-      my ($short_var, $full_var) = get_variant($seqID, $prev_end + 1, $this_start - 1);
-      if ($short_var =~ /WARN/){
-        if ($verbose){
-          say "== Skipping $name $short_var";
+  else {
+    if (defined $prev_base && $base_id eq $prev_base) {
+      if ($this_start > $prev_end && $up_or_dn =~ /DN$/) { # forward-forward
+        my ($short_var, $full_var) = get_variant($seqID, $prev_end + 1, $this_start - 1);
+        if ($short_var =~ /WARN/){
+          if ($verbose){
+            say "== Skipping $name $short_var";
+          }
+          say $LOG_FH "Skipping $name $short_var";
+          unless ($seen_skippedID{$name}){ $seen_skippedID{$name}++; }
+          next;
         }
-        say $LOG_FH "Skipping $name $short_var";
-        unless ($seen_skippedID{$name}){ $seen_skippedID{$name}++; }
-        next;
-      }
-      my $ninth = "ID=$gff_ID_prefix$name;Name=$name;ref_allele=$short_var";
-      say $GFF_FH join("\t", $seqID, $gff_source, $gff_type, $prev_end + 1, $this_start - 1, ".", ".", "+", $ninth );
-      say $BED_FH join("\t", $seqID, $prev_end + 1, $this_start - 1, $name, $full_var);
-    } 
-    elsif ($this_start <= $prev_end && $up_or_dn =~ /DN$/) { # forward-reverse
-      my ($short_var, $full_var) = get_variant($seqID, $prev_end + 1, $this_start - 1);
-      if ($short_var =~ /WARN/){
-        if ($verbose){
-          say "== Skipping $name $short_var";
+        else {
+          my $ninth = "ID=$gff_ID_prefix$name;Name=$name;ref_allele=$short_var";
+          unless ($seen_skippedID{$name}){
+            say $GFF_FH join("\t", $seqID, $gff_source, $gff_type, $prev_end + 1, $this_start - 1, ".", ".", "+", $ninth );
+            say $BED_FH join("\t", $seqID, $prev_end + 1, $this_start - 1, $name, $full_var);
+          }
         }
-        say $LOG_FH "Skipping $name $short_var";
-        unless ($seen_skippedID{$name}){ $seen_skippedID{$name}++; }
-        next;
+      } 
+      elsif ($this_start <= $prev_end && $up_or_dn =~ /DN$/) { # forward-reverse
+        #my ($short_var, $full_var) = get_variant($seqID, $prev_end + 1, $this_start - 1);
+        my ($short_var, $full_var) = get_variant($seqID, $this_start + 1, $prev_end - 1);
+        if ($short_var =~ /WARN/){
+          if ($verbose){
+            say "== Skipping $name $short_var";
+          }
+          say $LOG_FH "Skipping $name $short_var";
+          unless ($seen_skippedID{$name}){ $seen_skippedID{$name}++; }
+          next;
+        }
+        else {
+          my $ninth = "ID=$gff_ID_prefix$name;Name=$name;ref_allele=$short_var";
+          unless ($seen_skippedID{$name}){
+            say $GFF_FH join("\t", $seqID, $gff_source, $gff_type, $this_start + 1, $prev_end - 1, ".", ".", "-", $ninth );
+            say $BED_FH join("\t", $seqID, $this_start + 1, $prev_end - 1, $name, $full_var);
+          }
+        }
       }
-      my $ninth = "ID=$gff_ID_prefix$name;Name=$name;ref_allele=$short_var";
-      say $GFF_FH join("\t", $seqID, $gff_source, $gff_type, $this_end + 1, $prev_start - 1, ".", ".", "-", $ninth );
-      say $BED_FH join("\t", $seqID, $this_end + 1, $prev_start - 1, $name, $full_var);
     }
   }
 
