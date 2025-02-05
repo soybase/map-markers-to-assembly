@@ -103,8 +103,8 @@ while (<>) {
   chomp;
   next if /^#/;
   my @F = split /\t/;
-  my ($markID_UD, $seqID, $this_start, $this_end, $qcovhsp) = 
-    ($F[0], $F[1], $F[8], $F[9], $F[13]);
+  my ($markID_UD, $seqID, $this_start, $this_end, $bitsc, $qcovhsp) = 
+    ($F[0], $F[1], $F[8], $F[9], $F[11], $F[13]);
   $markID_UD =~ /(.+)\.(UP|DN)$/;
   my ($base_id, $up_or_dn) = ($1, $2);
 
@@ -137,7 +137,7 @@ while (<>) {
           my $ninth = "ID=$gff_ID_prefix$name;Name=$name;ref_allele=$short_var";
           unless ($seen_skippedID{$name}){
             say $GFF_FH join("\t", $seqID, $gff_source, $gff_type, $prev_end + 1, $this_start - 1, ".", ".", "+", $ninth );
-            say $BED_FH join("\t", $seqID, $prev_end + 1, $this_start - 1, $name, $full_var);
+            say $BED_FH join("\t", $seqID, $prev_end + 1, $this_start - 1, $name, $bitsc, "+", $full_var);
           }
         }
       } 
@@ -156,7 +156,7 @@ while (<>) {
           my $ninth = "ID=$gff_ID_prefix$name;Name=$name;ref_allele=$short_var";
           unless ($seen_skippedID{$name}){
             say $GFF_FH join("\t", $seqID, $gff_source, $gff_type, $this_start + 1, $prev_end - 1, ".", ".", "-", $ninth );
-            say $BED_FH join("\t", $seqID, $this_start + 1, $prev_end - 1, $name, $full_var);
+            say $BED_FH join("\t", $seqID, $this_start + 1, $prev_end - 1, $name, $bitsc, "-", $full_var);
           }
         }
       }
@@ -199,4 +199,4 @@ Steven Cannon
 2025-01-29 First functional version.
 2025-01-31 Require GFF output filename and also print to a derived bed file.
 2025-02-04 Print warnings to a log file.
-
+2025-02-05 Add orientation and score to BED output
