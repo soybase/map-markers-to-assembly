@@ -55,7 +55,6 @@ GetOptions (
   "out=s"     =>  \$out_file,   
   "pad:i"     =>  \$pad,  
   "merge"     =>  \$merge,
-  "out:s"     =>  \$out_file,   
   "gff_prefix_regex:s" => \$gff_prefix_regex,
   "verbose"   =>  \$verbose,
   "help"      =>  \$help,
