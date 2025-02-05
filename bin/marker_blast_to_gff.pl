@@ -124,7 +124,19 @@ while (<>) {
   else {
     if (defined $prev_base && $base_id eq $prev_base) {
       if ($this_start > $prev_end && $up_or_dn =~ /DN$/) { # forward-forward
-        my ($short_var, $full_var) = get_variant($seqID, $prev_end + 1, $this_start - 1, "FWD");
+        my ($short_var, $full_var);
+        if ( ($this_start-1)-$prev_end < 0 ) {
+          my ($start, $end) = ($prev_end, $this_start-1);
+          say $LOG_FH "Skipping $name because start is greater than end: $start, $end";
+          next;
+        }
+        elsif ( ($this_start-1)-$prev_end == 0 ) { # marker is of zero length - probably an indel
+          ($short_var, $full_var) = ("_", "_");
+          $prev_end--; # adjust the start coord to preserve the (collapsed) marker
+        }
+        else { # start-end (bed coords) are >=1
+          ($short_var, $full_var) = get_variant($seqID, $prev_end + 1, $this_start - 1, "FWD");
+        }
         if ($short_var =~ /WARN/){
           if ($verbose){
             say "== Skipping $name $short_var";
@@ -137,12 +149,24 @@ while (<>) {
           my $ninth = "ID=$gff_ID_prefix$name;Name=$name;ref_allele=$short_var";
           unless ($seen_skippedID{$name}){
             say $GFF_FH join("\t", $seqID, $gff_source, $gff_type, $prev_end + 1, $this_start - 1, ".", ".", "+", $ninth );
-            say $BED_FH join("\t", $seqID, $prev_end + 1, $this_start - 1, $name, $bitsc, "+", $full_var);
+            say $BED_FH join("\t", $seqID,                         $prev_end,     $this_start - 1, $name, $bitsc, "+", $full_var);
           }
         }
       } 
       elsif ($this_start <= $prev_end && $up_or_dn =~ /DN$/) { # forward-reverse
-        my ($short_var, $full_var) = get_variant($seqID, $this_start + 1, $prev_end - 1, "REV"); # seq here is reverse-complemented
+        my ($short_var, $full_var);
+        if ( ($prev_end-1)-$this_start < 0 ) {
+          my ($start, $end) = ($this_start, $prev_end-1);
+          say $LOG_FH "Skipping $name because start is greater than end: $start, $end";
+          next;
+        }
+        elsif ( ($prev_end-1)-$this_start == 0 ) { # marker is of zero length - probably an indel
+          ($short_var, $full_var) = ("_", "_");
+          $this_start--; # adjust the start coord to preserve the (collapsed) marker
+        }
+        else { # start-end (bed coords) are >=1
+          ($short_var, $full_var) = get_variant($seqID, $this_start + 1, $prev_end - 1, "REV"); # seq here is reverse-complemented
+        }
         if ($short_var =~ /WARN/){
           if ($verbose){
             say "== Skipping $name $short_var";
@@ -155,7 +179,7 @@ while (<>) {
           my $ninth = "ID=$gff_ID_prefix$name;Name=$name;ref_allele=$short_var";
           unless ($seen_skippedID{$name}){
             say $GFF_FH join("\t", $seqID, $gff_source, $gff_type, $this_start + 1, $prev_end - 1, ".", ".", "-", $ninth );
-            say $BED_FH join("\t", $seqID, $this_start + 1, $prev_end - 1, $name, $bitsc, "-", $full_var);
+            say $BED_FH join("\t", $seqID,                         $this_start,     $prev_end - 1, $name, $bitsc, "-", $full_var);
           }
         }
       }
