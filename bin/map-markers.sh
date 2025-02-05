@@ -216,6 +216,12 @@ cat blastout/$MRK_FR_BARE.x.$GNM_TO_BASE.bln | top_line.awk |
                          -out "$WD/marker_to/$marker_to"
 
 echo
+echo "== Sort GFF"
+sort_gff.pl "$WD/marker_to/$marker_to.gff3" > "$WD/marker_to/tmp.gff"
+mv "$WD/marker_to/tmp.gff" "$WD/marker_to/$marker_to.gff3"
+
+
+echo
 echo "== Compare the initial and mapped markers and report"
 echo "==   Marker list 1: $work_dir/marker_to/lis.$MRK_FR_BARE"
 echo "==   Marker list 2: $work_dir/marker_to/lis.$marker_to"
