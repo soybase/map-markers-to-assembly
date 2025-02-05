@@ -124,7 +124,7 @@ while (<>) {
   else {
     if (defined $prev_base && $base_id eq $prev_base) {
       if ($this_start > $prev_end && $up_or_dn =~ /DN$/) { # forward-forward
-        my ($short_var, $full_var) = get_variant($seqID, $prev_end + 1, $this_start - 1);
+        my ($short_var, $full_var) = get_variant($seqID, $prev_end + 1, $this_start - 1, "FWD");
         if ($short_var =~ /WARN/){
           if ($verbose){
             say "== Skipping $name $short_var";
@@ -142,8 +142,7 @@ while (<>) {
         }
       } 
       elsif ($this_start <= $prev_end && $up_or_dn =~ /DN$/) { # forward-reverse
-        #my ($short_var, $full_var) = get_variant($seqID, $prev_end + 1, $this_start - 1);
-        my ($short_var, $full_var) = get_variant($seqID, $this_start + 1, $prev_end - 1);
+        my ($short_var, $full_var) = get_variant($seqID, $this_start + 1, $prev_end - 1, "REV"); # seq here is reverse-complemented
         if ($short_var =~ /WARN/){
           if ($verbose){
             say "== Skipping $name $short_var";
@@ -179,8 +178,20 @@ say "== See log file at $gff_file_base.log";
 #####################
 
 sub get_variant {
-  my ($id, $start, $end) = @_;
-  my $full_seq = $db->seq($id, $start, $end);
+  my ($id, $start, $end, $orient) = @_;
+  my $full_seq;
+  if ($orient =~ /FWD/){
+    $full_seq = $db->seq($id, $start, $end);
+  }
+  else { # $orient is REV
+    $full_seq = $db->seq($id, $start, $end);
+    my $seqobj = Bio::Seq->new(-seq => $full_seq, -alphabet => "dna");
+    my $revcom_obj = $seqobj->revcom();
+    my $revcom_seq = $revcom_obj->seq();
+    #say "SEQ: " . substr($full_seq, 0, $max_len);
+    #say "REV: " . substr($revcom_seq, 0, $max_len);
+    $full_seq = $revcom_seq;
+  }
   my $seq = $full_seq;
   my $len = length($full_seq);
   if ( $len > $sample_len && $len <= $max_len ){
@@ -199,4 +210,5 @@ Steven Cannon
 2025-01-29 First functional version.
 2025-01-31 Require GFF output filename and also print to a derived bed file.
 2025-02-04 Print warnings to a log file.
-2025-02-05 Add orientation and score to BED output
+2025-02-05 Add orientation and score to BED output, and report rev-complimented sequence if mapping to negative strand
+
