@@ -58,10 +58,7 @@ files locally into a data directory using scp or equivalent, and then give the p
     genome_from - Full filepath to first genome assembly, corresponding with the coordinates in the marker_from file; compressed
     genome_to   - Full filepath to the second genome assembly, to which the markers will be projected
 
-    marker_work - Name for intermediate/working marker file (bed), based on marker_from, sans extension. 
-                    Two files will be written: FILE.bed and FILE.UD.bed
-
-    marker_to   - Name for new marker files, sans extension. Two files will be written: FILE.bed and FILE.gff3
+    marker_to   - Name for new marker files, sans extension. Three files will be written: FILE.bed, FILE.gff3, FILE.log
 
     gff_source  - String to use for the gff3 source (column 2); typically, a project, data source, or program
     gff_type    - String to use for the gff3 type (column 3), e.g. "genetic_marker" or other SOFA sequence ontology term
