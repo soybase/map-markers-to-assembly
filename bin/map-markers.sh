@@ -213,6 +213,7 @@ cat blastout/$MRK_FR_BARE.x.$GNM_TO_BASE.bln | top_line.awk |
                          -gff_source $gff_source \
                          -gff_type $gff_type \
                          -gff_ID_prefix $gff_ID_prefix \
+			 -max_len $max_len \
                          -out "$WD/marker_to/$marker_to"
 
 echo
