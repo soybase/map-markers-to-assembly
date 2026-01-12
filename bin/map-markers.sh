@@ -188,6 +188,7 @@ echo "== Make BLAST output directories and index files"
 mkdir -p blastdb blastout
 
 echo "genome_from: genome_to/$GNM_TO_BASE"
+echo "genome_to: genome_to/$GNM_TO_BASE"
 if [ ! -f blastdb/$GNM_TO_BASE.nin ]; then
   cat_or_zcat genome_to/$GNM_TO_BASE | 
     makeblastdb -in - -dbtype nucl \
