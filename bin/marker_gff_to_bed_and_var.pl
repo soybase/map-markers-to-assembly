@@ -38,26 +38,29 @@ my $usage = <<EOS;
        
   Options:
     -pad   The flanking distance up- and down-stream from the marker. Default 1000.
+    -min_flank   Minimum length of UP or DN sequence to report. Default 100.
     -gff_prefix_regex  Regular expression for stripping the genome prefix from the marker IDs, e.g. glyma.Wm82.gnm1.Sat_413 => Sat_413
     -merge (boolean; default false). If set, then one sequence will be returned for each marker;
-             otherwise, return one beUP (>ID.UP), one DNer (>ID.DN).
+             otherwise, return one UP (>ID.UP), one DNer (>ID.DN).
     -verbose (boolean) Some debug output, marked with "=="
     -help  (boolean) This message.
 EOS
 
 my ($genome_file, $marker_file, $out_file, $merge, $verbose, $help);
 my $pad = 1000;
+my $min_flank = 100;
 my $gff_prefix_regex="^[^.]+\.[^.]+\.[^.]+\.";
 
 GetOptions (
-  "genome=s"  =>  \$genome_file,   
-  "markers=s" =>  \$marker_file,   
-  "out=s"     =>  \$out_file,   
-  "pad:i"     =>  \$pad,  
-  "merge"     =>  \$merge,
+  "genome=s"    =>  \$genome_file,   
+  "markers=s"   =>  \$marker_file,   
+  "out=s"       =>  \$out_file,   
+  "pad:i"       =>  \$pad,  
+  "merge"       =>  \$merge,
   "gff_prefix_regex:s" => \$gff_prefix_regex,
-  "verbose"   =>  \$verbose,
-  "help"      =>  \$help,
+  "min_flank:i" => \$min_flank,
+  "verbose"     =>  \$verbose,
+  "help"        =>  \$help,
 );
 
 die "$usage\nPlease specify a genome assembly with -genome\n" unless $genome_file;
@@ -140,16 +143,29 @@ while (<$MRK_FH>) {
     my $name=$mrk_id;
     $name =~ s/$REX//;
 
-    if ($merge){ # Return one sequence per marker, including flanking upstream and down (in BED coords)
-      say $BED_UD_FH join("\t", $seqID, $pad_start, $pad_end, $mrk_id);
-
-      say $BED_FH    join("\t", $seqID, $pad_start, $pad_end, $name, $variant);
+    my $size_left = $mrk_start-$pad_start;
+    my $size_right = $pad_end-$mrk_end;
+    if ( $mrk_start-$pad_start<$min_flank || $pad_end-$mrk_end<$min_flank ) {
+      if ($verbose){
+        say "== CC: Skipping $seqID because flanking seq is too short: $mrk_start-$pad_start or $pad_end-$mrk_end";
+        say "== CC: $mrk_start-$pad_start, $pad_end-$mrk_end, $min_flank";
+        say "== CC: $size_left, $size_right, $min_flank";
+        say "";
+      }
+      next;
     }
-    else { # Return two sequences per marker: one upstream, one down (in BED coords)
-      say $BED_UD_FH join("\t", $seqID, $pad_start, $mrk_start, "$mrk_id.UP");
-      say $BED_UD_FH join("\t", $seqID, $mrk_end, $pad_end, "$mrk_id.DN");
+    else {
+      if ($merge){ # Return one sequence per marker, including flanking upstream and down (in BED coords)
+        say $BED_UD_FH join("\t", $seqID, $pad_start, $pad_end, $mrk_id);
 
-      say $BED_FH    join("\t", $seqID, $mrk_end, $pad_end, $name, $variant);
+        say $BED_FH    join("\t", $seqID, $pad_start, $pad_end, $name, $variant);
+      }
+      else { # Return two sequences per marker: one upstream, one down (in BED coords)
+        say $BED_UD_FH join("\t", $seqID, $pad_start, $mrk_start, "$mrk_id.UP");
+        say $BED_UD_FH join("\t", $seqID, $mrk_end, $pad_end, "$mrk_id.DN");
+
+        say $BED_FH    join("\t", $seqID, $mrk_end, $pad_end, $name, $variant);
+      }
     }
   }
 }
@@ -162,4 +178,4 @@ Steven Cannon
 2015-01-22 Remove 1-padding from $mrk_end. Add option for reporting variant sequence
 2025-01-28 Make reporting of variant sequence non-optional
 2025-01-31 Report two types of BED files -- one with .UP and .DN for each marker, and one with the seq variant
-
+2026-01-13 Add parameter min_flank and suppress printing sequences that are below this value
