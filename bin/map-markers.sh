@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 
-version="2025-01-08"
+version="2026-01-14"
 
+# set -x  # uncomment for debugging
 set -o errexit -o errtrace -o nounset -o pipefail -o posix
 
 trap 'echo ${0##*/}:${LINENO} ERROR executing command: ${BASH_COMMAND}' ERR
@@ -41,8 +42,9 @@ SYNOPSIS
 
     marker_to   - Name for new marker file (gff3); will be written to work_dir/marker_to/
 
-    identity    - Minimum percent identity in range 0..100 for blastn qcovhsp [90]
-    sample_len  -  Maximum length of sequence variant to report, as a sample, in the GFF 9th column [10]
+    qcov_identity    - Minimum percent identity in range 0..100 for blastn qcovhsp [90]
+    perc_identity    - Minimum percent identity in range 0..100 for blastn sequence match [99]
+    sample_len  - Maximum length of sequence variant to report, as a sample, in the GFF 9th column [10]
     max_len     - Maximum variant length for which to report a GFF line [200]
 
     work_dir    - work directory; default work_dir
@@ -55,35 +57,6 @@ EOS
 if [ "$#" -eq 0 ]; then
   echo >&2 "$HELP_DOC" && exit 0;
 fi
-
-NPROC=$( ( command -v nproc > /dev/null && nproc ) || getconf _NPROCESSORS_ONLN)
-CONFIG="null"
-
-export NPROC=${NPROC:-1}
-
-##########
-# Command-line interpreter
-
-while getopts "c:h" opt
-do
-  case $opt in
-    c) CONFIG=$OPTARG; echo "Config: $CONFIG" ;;
-    h) echo >&2 "$HELP_DOC" && exit 0 ;;
-    *) echo >&2 echo "$HELP_DOC" && exit 1 ;;
-  esac
-done
-
-if [ "$CONFIG" == "null" ]; then
-  printf "\nPlease provide the path to a config file: -c CONFIG\n" >&2
-  printf "\nRun \"%s -h\" for help.\n\n" "$scriptname" >&2
-  exit 1;
-else
-  export CONF=${CONFIG}
-fi
-
-# Add shell variables from config file
-# shellcheck source=/dev/null
-. "${CONF}"
 
 # Check for existence of third-party executables
 missing_req=0
@@ -118,103 +91,148 @@ cat_or_zcat() {
 ##########
 
 echo
+echo "Run of the map-markers-to-genome workflow, version $version"
 echo "== Copy files into work directory. Uncompress and index where needed."
 
-WD=`realpath $work_dir`
-mkdir -p "${WD}"
-cd "${WD}" || exit
+NPROC=$( ( command -v nproc > /dev/null && nproc ) || getconf _NPROCESSORS_ONLN)
+CONFIG="null"
 
-mkdir -p marker_from
-mkdir -p genome_from
-mkdir -p genome_to
-mkdir -p marker_to
+export NPROC=${NPROC:-1}
 
-# Copy files into working directory. Uncompress and index the "from" genome.
-MRK_BASE=`basename $marker_from .gz`
-GNM_FROM_BASE=`basename $genome_from .gz`
-GNM_TO_BASE=`basename $genome_to .gz`
+##########
+# Command-line interpreter
 
-if [ ! -f  marker_from/$MRK_BASE.gz ]; then
-  cp $marker_from marker_from/$MRK_BASE.gz || exit
+while getopts "c:h" opt
+do
+  case $opt in
+    c) CONFIG=$OPTARG; echo "Config: $CONFIG" ;;
+    h) echo >&2 "$HELP_DOC" && exit 0 ;;
+    *) echo >&2 echo "$HELP_DOC" && exit 1 ;;
+  esac
+done
+
+if [ "$CONFIG" == "null" ]; then
+  printf "\nPlease provide the path to a config file: -c CONFIG\n" >&2
+  printf "\nRun \"%s -h\" for help.\n\n" "$scriptname" >&2
+  exit 1;
+else
+  export CONF=${CONFIG}
 fi
 
-if [ ! -f genome_from/$GNM_FROM_BASE.gz ] || [ ! -f genome_from/$GNM_FROM_BASE ]; then
-  cp $genome_from genome_from/$GNM_FROM_BASE.gz || exit
+# Add shell variables from config file. Defaults, overridden by config file
+marker_from=""; genome_from=""; genome_to=""; marker_to=""; gff_source=""; gff_ID_prefix=""; 
+gff_type="genetic_marker"; perc_identity="95"; gff_prefix_regex='^[^.]+\.[^.]+\.[^.]+\.'; 
+evalue="1e-10"; qcov_identity="90"; sample_len="10"; max_len="25"; work_dir="work_dir"; min_flank="100";
+# shellcheck source=/dev/null
+. "${CONF}"
 
-  if [ ! -f genome_from/$GNM_FROM_BASE ]; then
-    gunzip genome_from/$GNM_FROM_BASE.gz
+WD=$(realpath "$work_dir")
+mkdir -p "${WD}"
+
+mkdir -p "${WD}/marker_from"
+mkdir -p "${WD}/genome_from"
+mkdir -p "${WD}/genome_to"
+mkdir -p "${WD}/marker_to"
+
+# Copy files into working directory. Uncompress and index the "from" genome. Strip ".gz"
+MRK_BASE=$(basename "$marker_from" .gz)
+GNM_FROM_BASE=$(basename "$genome_from" .gz)
+GNM_TO_BASE=$(basename "$genome_to" .gz)
+
+# Strip suffix such as .fa, .fasta, .fna
+GNM_FROM_BASE="${GNM_FROM_BASE%.*}"
+GNM_TO_BASE="${GNM_TO_BASE%.*}"
+
+if [ ! -f  "${WD}/marker_from/$MRK_BASE".gz ]; then
+  cp "$marker_from" "${WD}/marker_from/$MRK_BASE".gz || exit
+fi
+
+if [ ! -f "${WD}/genome_from/$GNM_FROM_BASE".gz ] || [ ! -f "${WD}/genome_from/$GNM_FROM_BASE" ]; then
+  cp "$genome_from" "${WD}/genome_from/$GNM_FROM_BASE".gz || exit
+
+  if [ ! -f "${WD}/genome_from/$GNM_FROM_BASE" ]; then
+    gunzip "${WD}/genome_from/$GNM_FROM_BASE".gz
   fi
   
-  if [ ! -f genome_from/$GNM_FROM_BASE.fai ]; then
-    samtools faidx genome_from/$GNM_FROM_BASE
+  if [ ! -f "${WD}/genome_from/$GNM_FROM_BASE".fai ]; then
+    samtools faidx "${WD}/genome_from/$GNM_FROM_BASE"
   fi
 fi
 
-if [ ! -f genome_to/$GNM_TO_BASE.gz ] || [ ! -f genome_to/$GNM_TO_BASE ]; then
-  cp $genome_to genome_to/$GNM_TO_BASE.gz || exit
+if [ ! -f "${WD}/genome_to/$GNM_TO_BASE".gz ] || [ ! -f "${WD}/genome_to/$GNM_TO_BASE" ]; then
+  cp "$genome_to" "${WD}/genome_to/$GNM_TO_BASE".gz || exit
 
-  if [ ! -f genome_to/$GNM_TO_BASE ]; then
-    gunzip genome_to/$GNM_TO_BASE.gz
+  if [ ! -f "${WD}/genome_to/$GNM_TO_BASE" ]; then
+    gunzip "${WD}/genome_to/$GNM_TO_BASE".gz
   fi
 fi
 
 MRK_FR_BARE="${MRK_BASE%.*}"
-if [ ! -f marker_to/$MRK_FR_BARE.1kflank.fna ]; then
+if [ ! -f "${WD}/marker_from/$MRK_FR_BARE".1kflank.fna ]; then
   echo
   echo "== Put the marker information into four-column BED format, with 1000 bases on each side of the SNP."
   echo "== Need to adjust from GFF 1-based, closed [start, end] to BED 0-based, half-open [start-1, end)."
   echo "== Special-casing near the molecule start with script marker_gff_to_bed_and_var.pl."
-    marker_gff_to_bed_and_var.pl -marker $marker_from \
-                                 -genome genome_from/$GNM_FROM_BASE \
+    marker_gff_to_bed_and_var.pl -marker "$marker_from" \
+                                 -min_flank "$min_flank" \
+                                 -genome "$WD/genome_from/$GNM_FROM_BASE" \
                                  -out "$WD/marker_from/$MRK_FR_BARE"
   
   echo
   echo "== Extract the sequences from the FROM genome"
 
-  bedtools getfasta -fi genome_from/$GNM_FROM_BASE \
-                    -bed marker_from/$MRK_FR_BARE.UD.bed \
-                    -name \
-                    -fo marker_to/$MRK_FR_BARE.1kflank.fna
+  bedtools getfasta -fi "$WD/genome_from/$GNM_FROM_BASE" \
+                    -bed "$WD/marker_from/$MRK_FR_BARE".UD.bed \
+                    -name | 
+                      filter_fasta_for_Ns.awk -v min_nonN="$min_flank" > "$WD/marker_from/$MRK_FR_BARE".1kflank.fna
   
   echo
   echo "== Strip positional information, added by getfasta, from the retrieved sequence"
-  perl -pi -e 's/>(\S+)::.+/>$1/' marker_to/$MRK_FR_BARE.1kflank.fna
+  perl -pi -e 's/>(\S+)::.+/>$1/' "$WD/marker_from/$MRK_FR_BARE".1kflank.fna
 else 
   echo "Skipping creation of BED file and extraction of flanking sequence, since it exists."
 fi
 
 echo
 echo "== Make BLAST output directories and index files"
-mkdir -p blastdb blastout
+mkdir -p "$WD/blastdb" "$WD/blastout"
 
-echo "genome_from: genome_to/$GNM_TO_BASE"
+echo "genome_from: genome_from/$GNM_FROM_BASE"
 echo "genome_to: genome_to/$GNM_TO_BASE"
-if [ ! -f blastdb/$GNM_TO_BASE.nin ]; then
-  cat_or_zcat genome_to/$GNM_TO_BASE | 
+if [ ! -f "$WD/blastdb/$GNM_TO_BASE".nin ]; then
+  cat_or_zcat "$WD/genome_to/$GNM_TO_BASE" | 
     makeblastdb -in - -dbtype nucl \
-                -title $GNM_TO_BASE -hash_index -out blastdb/$GNM_TO_BASE
+                -title "$GNM_TO_BASE" -hash_index -out "$WD/blastdb/$GNM_TO_BASE"
 fi
 
-if [ ! -f blastout/$MRK_FR_BARE.x.$GNM_TO_BASE.bln ]; then
+if [ ! -f "$WD/blastout/$MRK_FR_BARE.x.$GNM_TO_BASE".bln ]; then
   echo
   echo "== Run BLAST"
-  blastn -db blastdb/$GNM_TO_BASE \
-         -query marker_to/$MRK_FR_BARE.1kflank.fna \
-         -num_threads $NPROC -evalue 1e-10 -perc_identity 99 \
-         -outfmt "6 std qlen qcovs" \
-         -out blastout/$MRK_FR_BARE.x.$GNM_TO_BASE.bln
+  cat "$WD/marker_from/$MRK_FR_BARE".1kflank.fna | 
+    blastn -db "$WD/blastdb/$GNM_TO_BASE" \
+           -query - \
+           -num_threads "$NPROC" \
+           -evalue "$evalue" \
+           -perc_identity "$perc_identity" \
+           -outfmt "6 std qlen qcovs" |
+             cat > "$WD/blastout/$MRK_FR_BARE.x.$GNM_TO_BASE.bln"
+  echo "DONE with BLAST"
 else 
   echo "== Skipping BLAST, as the output file exists."
 fi
 
 echo
 echo "== Filter BLAST output and write new marker file (as a tsv file)"
-cat blastout/$MRK_FR_BARE.x.$GNM_TO_BASE.bln | top_line.awk | 
-  marker_blast_to_gff.pl -genome genome_to/$GNM_TO_BASE \
-                         -gff_source $gff_source \
-                         -gff_type $gff_type \
-                         -gff_ID_prefix $gff_ID_prefix \
-                         -max_len $max_len \
+echo "$WD/blastout/$MRK_FR_BARE.x.$GNM_TO_BASE.bln"
+cat "$WD/blastout/$MRK_FR_BARE.x.$GNM_TO_BASE.bln" | top_line.awk | 
+  marker_blast_to_gff.pl -genome "$WD/genome_to/$GNM_TO_BASE" \
+                         -gff_source "$gff_source" \
+                         -gff_type "$gff_type" \
+                         -gff_ID_prefix "$gff_ID_prefix" \
+                         -max_len "$max_len" \
+                         -qcov_identity "$qcov_identity" \
+                         -sample_len "$sample_len" \
+                         -gff_prefix_regex "$gff_prefix_regex" \
                          -out "$WD/marker_to/$marker_to"
 
 echo
@@ -225,12 +243,12 @@ mv "$WD/marker_to/tmp.gff" "$WD/marker_to/$marker_to.gff3"
 
 echo
 echo "== Compare the initial and mapped markers and report"
-echo "==   Marker list 1: $work_dir/marker_to/lis.$MRK_FR_BARE"
-echo "==   Marker list 2: $work_dir/marker_to/lis.$marker_to"
-echo "==   Marker report: $work_dir/marker_to/report.${MRK_FR_BARE}--${marker_to}.tsv"
+echo "==   Marker list 1: $WD/$work_dir/marker_from/lis.$MRK_FR_BARE"
+echo "==   Marker list 2: $WD/$work_dir/marker_to/lis.$marker_to"
+echo "==   Marker report: $WD/$work_dir/marker_to/report.${MRK_FR_BARE}--${marker_to}.tsv"
 
 # Extract ID and allele from the "from" bed file, and print "+" orientation for all
-cat "$WD/marker_from/$MRK_FR_BARE.bed" | awk -v OFS="\t" '{print $4, "+", $5}' | sort > "$WD/marker_to/lis.$MRK_FR_BARE"
+cat "$WD/marker_from/$MRK_FR_BARE.bed" | awk -v OFS="\t" '{print $4, "+", $5}' | sort > "$WD/marker_from/lis.$MRK_FR_BARE"
 
 # Next: Extract ID, allele, and orientation from the "to" bed file
 cut -f4,6,7 "$WD/marker_to/$marker_to.bed" | sort > "$WD/marker_to/lis.$marker_to"
@@ -239,7 +257,7 @@ cut -f4,6,7 "$WD/marker_to/$marker_to.bed" | sort > "$WD/marker_to/lis.$marker_t
 #                              0        1  2  3  4
 #                          ss715578401  +  G  +  G
 #                          ss715578490  +  G  -  C
-join -a1 "$WD/marker_to/lis.$MRK_FR_BARE" "$WD/marker_to/lis.$marker_to" |
+join -a1 "$WD/marker_from/lis.$MRK_FR_BARE" "$WD/marker_to/lis.$marker_to" |
   perl -F"\s" -lane 'BEGIN{ print join("\t", "#markerID", "compare", "len1", "len2", "orient", "var1", "var2") };
                      if (scalar(@F)==3){ # marker not in target genome
                        print join( "\t", $F[0], "NULL", length($F[2]), 0, ".", $F[2], "NULL");
@@ -266,11 +284,11 @@ cat "$WD/marker_to/$marker_to.gff3" | sort -k1,1 -k4n,4n |
 
 echo
 echo "== Mapped markers:"
-echo "==   $work_dir/marker_to/$marker_to.bed"
-echo "==   $work_dir/marker_to/$marker_to.gff3"
+echo "==   $WD/$work_dir/marker_to/$marker_to.bed"
+echo "==   $WD/$work_dir/marker_to/$marker_to.gff3"
 echo
 echo "== Run completed. Look for results at $work_dir/marker_to/"
 echo
 
-
 exit 0
+
