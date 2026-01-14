@@ -38,7 +38,7 @@ my $usage = <<EOS;
     -out         Name for new marker files, sans extension. Three files will be written: .bed, .gff3, .log
     
   Options:   
-    -identity  Percent identity in range 0..100 [90]
+    -qcov_identity  Percent identity for query coverage (qcovhsp), in range 0..100 [90]
     -sample_len  Maximum length of sequence variant to report, as a sample, in the GFF 9th column [10]
     -max_len     Maximum variant length for which to report a GFF line [200]
                    For a SNP, most variants are 1 base long, but there may be longer indels. 
@@ -52,7 +52,7 @@ my $usage = <<EOS;
 EOS
 
 my ($genome_file, $out_file, $verbose, $help);
-my $identity=90;
+my $qcov_identity=90;
 my $sample_len=10;
 my $max_len=200;
 my $gff_source="map-markers-to-assembly";
@@ -63,7 +63,7 @@ my $gff_prefix_regex="^[^.]+\.[^.]+\.[^.]+\.";
 GetOptions (
   "genome=s"     => \$genome_file,   
   "out=s"        => \$out_file,   
-  "identity:i"   => \$identity,
+  "qcov_identity:i"   => \$qcov_identity,
   "sample_len:i" => \$sample_len,
   "max_len:i"    => \$max_len,
   "gff_source:s" => \$gff_source,
@@ -114,11 +114,11 @@ while (<>) {
 
   unless ($seen_markID{$name}){ $seen_markID{$name}++; }
 
-  if ($qcovhsp < $identity){
+  if ($qcovhsp < $qcov_identity){
     if ($verbose){
-      say "== Skipping $name $up_or_dn bbecause qcovhsp<identity: $qcovhsp<$identity";
+      say "== Skipping $name $up_or_dn bbecause qcovhsp<qcov_identity: $qcovhsp<$qcov_identity";
     }
-    say $LOG_FH "Skipping $name $up_or_dn because qcovhsp<identity: $qcovhsp<$identity";
+    say $LOG_FH "Skipping $name $up_or_dn because qcovhsp<qcov_identity: $qcovhsp<$qcov_identity";
     unless ($seen_skippedID{$name}){ $seen_skippedID{$name}++; }
   }
   else {
@@ -235,4 +235,4 @@ Steven Cannon
 2025-01-31 Require GFF output filename and also print to a derived bed file.
 2025-02-04 Print warnings to a log file.
 2025-02-05 Add orientation and score to BED output, and report rev-complimented sequence if mapping to negative strand
-
+2026-01-14 Change handling of identity, now calling it qcov_identity to distinguish it from percent identity
