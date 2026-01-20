@@ -13,21 +13,23 @@ The following are the main steps:
   * Create an index on the uncompressed FROM genome;
   * Put the marker information into four-column BED format, with 1000 bases on each side of the SNP;
   * Extract the sequences from the FROM genome;
-  * Run BLAST against the TO genome;
-  * Filter BLAST output and writes new marker file (as a gff3 file).
+  * Run BLAST or burst (depending on the chosen search engine) against the TO genome;
+  * Filter BLAST or burst output and writes new marker file (as a gff3 file).
 
 The dependencies (see installation instructions below) are:
   * samtools 
   * bedtools 
   * BioPerl
-  * blast+
+  * blast
+  * burst
 
-and five scripts in the bin directory:
+and six scripts in the bin directory:
   * map-markers.sh
   * marker_blast_to_gff.pl
   * marker_gff_to_bed_and_var.pl
   * top_line.awk
   * sort_gff.pl
+  * filter_fasta_for_Ns.awk
 
 ```bash
 NAME
@@ -80,10 +82,10 @@ on the order of an hour.
 
 Create a conda environment (unless an environment with the necessary packages exists). 
 The conda environment specified by the `environment.yml` config is called `map-markers`.
+
+    `conda env create`
+
 (NOTE for the SoyBase and Legume Information System project: a suitable project onvironment is `ds-curate`; in that case, just do `source activate ds-curate`.
-
-    conda env create
-
 
 ## Running the program:
 
@@ -91,7 +93,7 @@ If running the program interactively, start an interactive session, e.g.
 ```
   salloc  
   module load miniconda
-  source activate ds-curate
+  source activate map-markers
   PATH=$PWD/bin:$PATH
 
   map-markers.sh -c config/gnm1_to_gnm2_SoySSR.conf
