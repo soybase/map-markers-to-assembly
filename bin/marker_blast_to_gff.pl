@@ -29,7 +29,7 @@ my $usage = <<EOS;
 
    The BLAST output should be filtered such that the matches of the flanking query sequences
    (.UP and .DN) are near-perfect top matches, and sorted relative to the target sequence and
-   such the .UP and .DN for a given marker are adjacent in the filtered BLAST output.
+   such that the .UP and .DN for a given marker are adjacent in the filtered BLAST output.
    The standard ordering of the BLAST output should be sufficient.
 
   Required:
