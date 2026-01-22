@@ -124,6 +124,7 @@ while (<>) {
   else {
     if (defined $prev_base && $base_id eq $prev_base) {
       if ($this_start > $prev_end && $up_or_dn =~ /DN$/) { # forward-forward
+        if ($verbose){say "AA: handling forward-forward; $this_start > $prev_end && $up_or_dn" }
         my ($short_var, $full_var);
         if ( ($this_start-1)-$prev_end < 0 ) {
           my ($start, $end) = ($prev_end, $this_start-1);
@@ -132,6 +133,7 @@ while (<>) {
         }
         elsif ( ($this_start-1)-$prev_end == 0 ) { # marker is of zero length - probably an indel
           ($short_var, $full_var) = ("_", "_");
+          if ($verbose){say "AA: $this_start-1, $prev_end, $short_var";}
           $prev_end--; # adjust the start coord to preserve the (collapsed) marker
         }
         else { # start-end (bed coords) are >=1
@@ -154,6 +156,7 @@ while (<>) {
         }
       } 
       elsif ($this_start <= $prev_end && $up_or_dn =~ /DN$/) { # forward-reverse
+        if ($verbose){say "BB: handling forward-reverse; $this_start <= $prev_end && $up_or_dn"}
         my ($short_var, $full_var);
         if ( ($prev_end-1)-$this_start < 0 ) {
           my ($start, $end) = ($this_start, $prev_end-1);
@@ -162,6 +165,7 @@ while (<>) {
         }
         elsif ( ($prev_end-1)-$this_start == 0 ) { # marker is of zero length - probably an indel
           ($short_var, $full_var) = ("_", "_");
+          if ($verbose){say "BB: $this_start-1, $prev_end, $short_var";}
           $this_start--; # adjust the start coord to preserve the (collapsed) marker
         }
         else { # start-end (bed coords) are >=1
