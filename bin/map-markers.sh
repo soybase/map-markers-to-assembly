@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
-version="2026-01-20"
+version="2026-01-21"
 
-# set -x  # uncomment for debugging
+ set -xtrace  # uncomment for debugging
 set -o errexit -o errtrace -o nounset -o pipefail -o posix
 
 trap 'echo ${0##*/}:${LINENO} ERROR executing command: ${BASH_COMMAND}' ERR
@@ -46,7 +46,11 @@ SYNOPSIS
     perc_identity    - Minimum percent identity in range 0..100 for blastn sequence match [99]
     sample_len  - Maximum length of sequence variant to report, as a sample, in the GFF 9th column [10]
     max_len     - Maximum variant length for which to report a GFF line [200]
-    engine      - blast or burst [burst]
+    engine      - blast or burst [blast]
+                    BLAST should work well in essentially every situation. The reason to consider BURST is that it is
+                    much faster for very large marker sets. The downsides to BURST are slightly lower sensitivity, 
+                    and the target-genome index files are about 20x larger than for BLAST; and their creation takes 
+                    a large amount of memory (500 GB for a typical genome).
 
     work_dir    - work directory; default work_dir
 
@@ -243,14 +247,18 @@ elif [[ "$engine" == "burst" ]]; then
   fi
   
   if [ ! -f "$WD/blastout/$MRK_FR_BARE.x.$GNM_TO_BASE.bst" ]; then
-    NOW=$(date)
-    echo "TIME START BURST: $NOW"
     echo
     echo "== Run BURST"
+    NOW=$(date)
+    echo "TIME START BURST: $NOW"
+    echo "burst_linux_DB12 -q $WD/marker_from/$MRK_FR_BARE.1kflank.fna -a $WD/blastdb/$GNM_TO_BASE.acx \\"
+    echo "                 -r $WD/blastdb/$GNM_TO_BASE.edx -o $WD/blastout/$MRK_FR_BARE.x.$GNM_TO_BASE.bst --mode FORAGE --forwardreverse"
+
     burst_linux_DB12 -q "$WD/marker_from/$MRK_FR_BARE.1kflank.fna" \
                      -a "$WD/blastdb/$GNM_TO_BASE.acx" \
                      -r "$WD/blastdb/$GNM_TO_BASE.edx" \
-                     -m "BEST" \
+                     --mode FORAGE \
+                     --forwardreverse \
                      -o "$WD/blastout/$MRK_FR_BARE.x.$GNM_TO_BASE.bst"
     echo "DONE with BURST"
     NOW=$(date)
@@ -270,6 +278,9 @@ if [[ "$engine" == "blast" ]]; then
   echo "$WD/blastout/$MRK_FR_BARE.x.$GNM_TO_BASE.bln"
   # The blastn used above reports 14 fields, ending with with "qlen qcovs"
   cat "$WD/blastout/$MRK_FR_BARE.x.$GNM_TO_BASE.bln" | top_line.awk | 
+    sort -k2,2 -k1r,1r > "$WD/blastout/$MRK_FR_BARE.x.$GNM_TO_BASE.bln.sorted"
+
+  cat "$WD/blastout/$MRK_FR_BARE.x.$GNM_TO_BASE.bln.sorted" |
     marker_blast_to_gff.pl -genome "$WD/genome_to/$GNM_TO_BASE" \
                            -gff_source "$gff_source" \
                            -gff_type "$gff_type" \
@@ -278,16 +289,23 @@ if [[ "$engine" == "blast" ]]; then
                            -qcov_identity "$qcov_identity" \
                            -sample_len "$sample_len" \
                            -gff_prefix_regex "$gff_prefix_regex" \
-                           -out "$WD/marker_to/$marker_to"
+                           -out "$WD/marker_to/$marker_to" \
+                           -verbose
 elif [[ "$engine" == "burst" ]]; then
   # Calculate and add query sequence length and qcovs (percentage of the query that matches the target)
 
-# SOMETHING NOT WORKING HERE. CHECK SORTING PRIOR TO marker_blast_to_gff.pl
+  # Note that in burst tabular output, the starting coordinate of the match is one less than would be reported by blast.
+  # Also, the query length and the percent of the alignment relative to the query need to be added manually (cols 13 and 14).
+
   echo "$WD/blastout/$MRK_FR_BARE.x.$GNM_TO_BASE.bst"
   seqlen "$WD/marker_from/$MRK_FR_BARE.1kflank.fna" | sort -k1,1 | uniq > "$WD/marker_from/$MRK_FR_BARE.len"
   join <(sort -k1,1 -k11n,11n "$WD/blastout/$MRK_FR_BARE.x.$GNM_TO_BASE.bst") "$WD/marker_from/$MRK_FR_BARE.len" |
-    perl -pe 's/ +/\t/g' | awk '{print $0 "\t" int(100*($13-$11))/$13}' | 
-    top_line.awk | sort -k2,2 -k1r,1r |
+    perl -pe 's/ +/\t/g' | 
+    awk '{print $0 "\t" int(100*($13-$11))/$13}' | 
+    awk -v OFS="\t" '{ $9 = $9 + 1; print }' | sort -k1,1 |
+    top_line.awk | sort -k2,2 -k1r,1r > "$WD/blastout/$MRK_FR_BARE.x.$GNM_TO_BASE.bst.sorted"
+
+  cat "$WD/blastout/$MRK_FR_BARE.x.$GNM_TO_BASE.bst.sorted" |
     marker_blast_to_gff.pl -genome "$WD/genome_to/$GNM_TO_BASE" \
                            -gff_source "$gff_source" \
                            -gff_type "$gff_type" \
