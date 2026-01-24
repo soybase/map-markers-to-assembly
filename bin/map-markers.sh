@@ -2,7 +2,7 @@
 
 version="2026-01-24"
 
- set -x  # uncomment for debugging
+# set -x  # uncomment for debugging
 set -o errexit -o errtrace -o nounset -o pipefail -o posix
 
 trap 'echo ${0##*/}:${LINENO} ERROR executing command: ${BASH_COMMAND}' ERR
@@ -296,8 +296,8 @@ if [[ "$engine" == "blast" ]]; then
                            -qcov_identity "$qcov_identity" \
                            -sample_len "$sample_len" \
                            -gff_prefix_regex "$gff_prefix_regex" \
-                           -out "$WD/marker_to/$marker_to" \
-                           -verbose
+                           -out "$WD/marker_to/$marker_to"   # \
+                         # -verbose
 elif [[ "$engine" == "burst" ]]; then
   # Calculate and add query sequence length and qcovs (percentage of the query that matches the target)
 
@@ -323,7 +323,8 @@ elif [[ "$engine" == "burst" ]]; then
                            -qcov_identity "$qcov_identity" \
                            -sample_len "$sample_len" \
                            -gff_prefix_regex "$gff_prefix_regex" \
-                           -out "$WD/marker_to/$marker_to" -verbose
+                           -out "$WD/marker_to/$marker_to"  # \
+                         # -verbose
 fi
 
 echo
