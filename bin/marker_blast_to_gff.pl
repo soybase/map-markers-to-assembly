@@ -124,7 +124,7 @@ while (<>) {
   else {
     if (defined $prev_base && $base_id eq $prev_base) {
       if ($this_start > $prev_end && $up_or_dn =~ /DN$/) { # forward-forward
-        if ($verbose){say "AA: handling forward-forward; $this_start > $prev_end && $up_or_dn" }
+        if ($verbose){say "AA: handling forward-forward for $name; $this_start > $prev_end && $up_or_dn" }
         my ($short_var, $full_var);
         if ( ($this_start-1)-$prev_end < 0 ) {
           my ($start, $end) = ($prev_end, $this_start-1);
@@ -133,7 +133,7 @@ while (<>) {
         }
         elsif ( ($this_start-1)-$prev_end == 0 ) { # marker is of zero length - probably an indel
           ($short_var, $full_var) = ("_", "_");
-          if ($verbose){say "AA: $this_start-1, $prev_end, $short_var";}
+          if ($verbose){say "AA:   $this_start-1, $prev_end, $short_var";}
           $prev_end--; # adjust the start coord to preserve the (collapsed) marker
         }
         else { # start-end (bed coords) are >=1
@@ -156,7 +156,7 @@ while (<>) {
         }
       } 
       elsif ($this_start <= $prev_end && $up_or_dn =~ /DN$/) { # forward-reverse
-        if ($verbose){say "BB: handling forward-reverse; $this_start <= $prev_end && $up_or_dn"}
+        if ($verbose){say "BB: handling forward-reverse for $name; $this_start <= $prev_end && $up_or_dn"}
         my ($short_var, $full_var);
         if ( ($prev_end-1)-$this_start < 0 ) {
           my ($start, $end) = ($this_start, $prev_end-1);
@@ -165,7 +165,7 @@ while (<>) {
         }
         elsif ( ($prev_end-1)-$this_start == 0 ) { # marker is of zero length - probably an indel
           ($short_var, $full_var) = ("_", "_");
-          if ($verbose){say "BB: $this_start-1, $prev_end, $short_var";}
+          if ($verbose){say "BB:   $this_start-1, $prev_end, $short_var";}
           $this_start--; # adjust the start coord to preserve the (collapsed) marker
         }
         else { # start-end (bed coords) are >=1
@@ -239,4 +239,4 @@ Steven Cannon
 2025-01-31 Require GFF output filename and also print to a derived bed file.
 2025-02-04 Print warnings to a log file.
 2025-02-05 Add orientation and score to BED output, and report rev-complimented sequence if mapping to negative strand
-2026-01-14 Change handling of identity, now calling it qcov_identity to distinguish it from percent identity
+2026-01-14 Change variable for identity, now calling it qcov_identity to distinguish it from percent identity
