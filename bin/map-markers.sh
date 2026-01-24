@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
-version="2026-01-21"
+version="2026-01-24"
 
- set -xtrace  # uncomment for debugging
+ set -x  # uncomment for debugging
 set -o errexit -o errtrace -o nounset -o pipefail -o posix
 
 trap 'echo ${0##*/}:${LINENO} ERROR executing command: ${BASH_COMMAND}' ERR
@@ -98,8 +98,16 @@ seqlen() {
   fastafile=${1}
   awk '/^>/ {if (len) print len; len = 0; printf("%s\t", substr($1,2)); next}
        { len+=length }
-       END {if (len) print len}' $fastafile
+       END {if (len) print len}' "$fastafile"
 }
+
+# Adjust zero-based, half-open BURST alignment coords to match one-based, closed BLAST coords
+convert_zero_based_to_one_based() {
+  awk 'BEGIN{ OFS="\t"} 
+       $10 - $9 > 0 { $9 = $9 + 1; print } 
+       $10 - $9 < 0 { $10 = $10 + 1; print }'
+} 
+
 ##########
 
 echo
@@ -251,14 +259,13 @@ elif [[ "$engine" == "burst" ]]; then
     echo "== Run BURST"
     NOW=$(date)
     echo "TIME START BURST: $NOW"
-    echo "burst_linux_DB12 -q $WD/marker_from/$MRK_FR_BARE.1kflank.fna -a $WD/blastdb/$GNM_TO_BASE.acx \\"
-    echo "                 -r $WD/blastdb/$GNM_TO_BASE.edx -o $WD/blastout/$MRK_FR_BARE.x.$GNM_TO_BASE.bst --mode FORAGE --forwardreverse"
 
     burst_linux_DB12 -q "$WD/marker_from/$MRK_FR_BARE.1kflank.fna" \
                      -a "$WD/blastdb/$GNM_TO_BASE.acx" \
                      -r "$WD/blastdb/$GNM_TO_BASE.edx" \
-                     --mode FORAGE \
+                     --noprogress \
                      --forwardreverse \
+                     --mode BEST \
                      -o "$WD/blastout/$MRK_FR_BARE.x.$GNM_TO_BASE.bst"
     echo "DONE with BURST"
     NOW=$(date)
@@ -278,9 +285,9 @@ if [[ "$engine" == "blast" ]]; then
   echo "$WD/blastout/$MRK_FR_BARE.x.$GNM_TO_BASE.bln"
   # The blastn used above reports 14 fields, ending with with "qlen qcovs"
   cat "$WD/blastout/$MRK_FR_BARE.x.$GNM_TO_BASE.bln" | top_line.awk | 
-    sort -k2,2 -k1r,1r > "$WD/blastout/$MRK_FR_BARE.x.$GNM_TO_BASE.bln.sorted"
+    sort -k2,2 -k1r,1r > "$WD/blastout/$MRK_FR_BARE.x.$GNM_TO_BASE.bln.filter"
 
-  cat "$WD/blastout/$MRK_FR_BARE.x.$GNM_TO_BASE.bln.sorted" |
+  cat "$WD/blastout/$MRK_FR_BARE.x.$GNM_TO_BASE.bln.filter" |
     marker_blast_to_gff.pl -genome "$WD/genome_to/$GNM_TO_BASE" \
                            -gff_source "$gff_source" \
                            -gff_type "$gff_type" \
@@ -302,10 +309,12 @@ elif [[ "$engine" == "burst" ]]; then
   join <(sort -k1,1 -k11n,11n "$WD/blastout/$MRK_FR_BARE.x.$GNM_TO_BASE.bst") "$WD/marker_from/$MRK_FR_BARE.len" |
     perl -pe 's/ +/\t/g' | 
     awk '{print $0 "\t" int(100*($13-$11))/$13}' | 
-    awk -v OFS="\t" '{ $9 = $9 + 1; print }' | sort -k1,1 |
-    top_line.awk | sort -k2,2 -k1r,1r > "$WD/blastout/$MRK_FR_BARE.x.$GNM_TO_BASE.bst.sorted"
+    convert_zero_based_to_one_based |
+    sort -k2,2 -k1r,1r > "$WD/blastout/$MRK_FR_BARE.x.$GNM_TO_BASE.bst.filter"
 
-  cat "$WD/blastout/$MRK_FR_BARE.x.$GNM_TO_BASE.bst.sorted" |
+    # awk -v OFS="\t" '$10 - $9 > 0 { $9 = $9 + 1; print } $10 - $9 < 0 { $10 = $10 -1; print }' | 
+
+  cat "$WD/blastout/$MRK_FR_BARE.x.$GNM_TO_BASE.bst.filter" |
     marker_blast_to_gff.pl -genome "$WD/genome_to/$GNM_TO_BASE" \
                            -gff_source "$gff_source" \
                            -gff_type "$gff_type" \
