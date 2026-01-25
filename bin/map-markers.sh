@@ -48,9 +48,9 @@ SYNOPSIS
     max_len     - Maximum variant length for which to report a GFF line [200]
     engine      - blast or burst [blast]
                     BLAST should work well in essentially every situation. The reason to consider BURST is that it is
-                    much faster for very large marker sets. The downsides to BURST are slightly lower sensitivity, 
-                    and the target-genome index files are about 20x larger than for BLAST; and their creation takes 
-                    a large amount of memory (500 GB for a typical genome).
+                    much faster for very large marker sets. The downsides to BURST are lower sensitivity 
+                    (~5% vs. BLAST in this context), and the target-genome index files are about 20x larger than 
+                    for BLAST; and their creation takes a large amount of memory (500 GB for a typical genome).
 
     work_dir    - work directory; default work_dir
 
@@ -251,7 +251,8 @@ elif [[ "$engine" == "burst" ]]; then
       burst_linux_DB12 -r "$WD/genome_to/$GNM_TO_BASE" \
                        -a "$WD/blastdb/$GNM_TO_BASE.acx" \
                        -o "$WD/blastdb/$GNM_TO_BASE.edx" \
-                       -d DNA 1000 -i "0.$perc_identity" -s
+                       -d DNA 1000 \
+                       -i "0.$perc_identity" 
   fi
   
   if [ ! -f "$WD/blastout/$MRK_FR_BARE.x.$GNM_TO_BASE.bst" ]; then
@@ -265,7 +266,7 @@ elif [[ "$engine" == "burst" ]]; then
                      -r "$WD/blastdb/$GNM_TO_BASE.edx" \
                      --noprogress \
                      --forwardreverse \
-                     --mode BEST \
+                     --mode FORAGE \
                      -o "$WD/blastout/$MRK_FR_BARE.x.$GNM_TO_BASE.bst"
     echo "DONE with BURST"
     NOW=$(date)
@@ -310,9 +311,8 @@ elif [[ "$engine" == "burst" ]]; then
     perl -pe 's/ +/\t/g' | 
     awk '{print $0 "\t" int(100*($13-$11))/$13}' | 
     convert_zero_based_to_one_based |
+    sort -k1,1 -k11n,11n -k2,2 | top_line.awk |
     sort -k2,2 -k1r,1r > "$WD/blastout/$MRK_FR_BARE.x.$GNM_TO_BASE.bst.filter"
-
-    # awk -v OFS="\t" '$10 - $9 > 0 { $9 = $9 + 1; print } $10 - $9 < 0 { $10 = $10 -1; print }' | 
 
   cat "$WD/blastout/$MRK_FR_BARE.x.$GNM_TO_BASE.bst.filter" |
     marker_blast_to_gff.pl -genome "$WD/genome_to/$GNM_TO_BASE" \
