@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-version="2026-01-25"
+version="2026-01-26"
 
 # set -x  # uncomment for debugging
 set -o errexit -o errtrace -o nounset -o pipefail -o posix
@@ -45,10 +45,10 @@ SYNOPSIS
     qcov_identity    - Minimum percent identity in range 0..100 for blastn qcovhsp [90]
     perc_identity    - Minimum percent identity in range 0..100 for blastn sequence match [99]
     sample_len  - Maximum length of sequence variant to report, as a sample, in the GFF 9th column [10]
-    max_len     - Maximum variant length for which to report a GFF line [200]
+    max_var_len     - Maximum variant length for which to report a GFF line [200]
     engine      - blast or burst [blast]
                     BLAST should work well in essentially every situation. The reason to consider BURST is that it is
-                    much faster for very large marker sets. The downsides to BURST are lower sensitivity 
+                    much faster for very large (100k+) marker sets. The downsides to BURST are lower sensitivity 
                     (~5% vs. BLAST in this context), and the target-genome index files are about 20x larger than 
                     for BLAST; and their creation takes a large amount of memory (500 GB for a typical genome).
 
@@ -142,7 +142,7 @@ fi
 # Add shell variables from config file. Defaults, overridden by config file
 marker_from=""; genome_from=""; genome_to=""; marker_to=""; gff_source=""; gff_ID_prefix=""; 
 engine="burst"; gff_type="genetic_marker"; perc_identity="95"; gff_prefix_regex='^[^.]+\.[^.]+\.[^.]+\.'; 
-evalue="1e-10"; qcov_identity="90"; sample_len="10"; max_len="25"; work_dir="work_dir"; min_flank="100";
+evalue="1e-10"; qcov_identity="80"; sample_len="10"; max_var_len="25"; work_dir="work_dir"; min_flank="100";
 # shellcheck source=/dev/null
 . "${CONF}"
 
@@ -296,7 +296,7 @@ if [[ "$engine" == "blast" ]]; then
                            -gff_source "$gff_source" \
                            -gff_type "$gff_type" \
                            -gff_ID_prefix "$gff_ID_prefix" \
-                           -max_len "$max_len" \
+                           -max_var_len "$max_var_len" \
                            -qcov_identity "$qcov_identity" \
                            -sample_len "$sample_len" \
                            -gff_prefix_regex "$gff_prefix_regex" \
@@ -322,7 +322,7 @@ elif [[ "$engine" == "burst" ]]; then
                            -gff_source "$gff_source" \
                            -gff_type "$gff_type" \
                            -gff_ID_prefix "$gff_ID_prefix" \
-                           -max_len "$max_len" \
+                           -max_var_len "$max_var_len" \
                            -qcov_identity "$qcov_identity" \
                            -sample_len "$sample_len" \
                            -gff_prefix_regex "$gff_prefix_regex" \
