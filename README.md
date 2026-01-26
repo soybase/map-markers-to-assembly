@@ -75,7 +75,7 @@ files locally into a data directory using scp or equivalent, and then give the p
     perc_identity - Minimum percent identity in range 0..100 for BLAST or BURST percent identity [95]
     qcov_identity - Minimum percent identity in range 0..100 for BLAST or BURST qcovhsp [80]
     sample_len    - Maximum length of sequence variant to report, as a sample, in the GFF 9th column [10]
-    max_var_len   - Maximum variant length for which to report a GFF line [200]
+    max_var_len   - Maximum variant length for which to report a GFF line [25]
     min_flank     - Minimum length of flanking around a marker, to be used in search of the target genome. [100]
     work_dir      - Work directory; [work_dir
 ```
