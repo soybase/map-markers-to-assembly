@@ -20,8 +20,7 @@ The dependencies (see installation instructions below) are:
   * samtools 
   * bedtools 
   * BioPerl
-  * blast
-  * burst
+  * blast or burst (blast preferred)
 
 and six scripts in the bin directory:
   * map-markers.sh
@@ -55,23 +54,30 @@ files locally into a data directory using scp or equivalent, and then give the p
 
   VARIABLES set in config file:
 ``` bash
-    marker_from - Full filepath to file with marker names and locations on first Genome; in gff3 format, compressed
+    marker_from   - Full filepath to file with marker names and locations on first Genome; in gff3 format, compressed
+    genome_from   - Full filepath to first genome assembly, corresponding with the coordinates in the marker_from file; compressed
+    genome_to     - Full filepath to the second genome assembly, to which the markers will be projected
+    marker_to     - Name for new marker files, sans extension. Three files will be written: FILE.bed, FILE.gff3, FILE.log
+    gff_source    - String to use for the gff3 source (column 2); typically, a project, data source, or program
+    gff_ID_prefix - String to use for the ID prefix in the gff3 9th column -- for example, the genome assembly version
+```
 
-    genome_from - Full filepath to first genome assembly, corresponding with the coordinates in the marker_from file; compressed
-    genome_to   - Full filepath to the second genome assembly, to which the markers will be projected
+... and some config-file parameters that can generally be left with default values:
+```
+    engine        - blast or burst [blast]
+                    BLAST should work well in essentially every situation. The reason to consider BURST is that it is
+                    much faster for very large (100k+) marker sets. The downsides to BURST are lower sensitivity
+                    (~5% vs. BLAST in this context), and the target-genome index files are about 20x larger than
+                    for BLAST; and their creation takes a large amount of memory (500 GB for a typical genome).
 
-    marker_to   - Name for new marker files, sans extension. Three files will be written: FILE.bed, FILE.gff3, FILE.log
-
-    gff_source  - String to use for the gff3 source (column 2); typically, a project, data source, or program
-    gff_type    - String to use for the gff3 type (column 3), e.g. "genetic_marker" or other SOFA sequence ontology term
-    gff_ID_prefix - String to use for the gff3 type (column 3), e.g. "genetic_marker" or other SOFA sequence ontology term
+    gff_type      - String to use for the gff3 type (column 3), e.g. "genetic_marker" or other SOFA sequence ontology term
     gff_prefix_regex - Regular expression for stripping the genome prefix from the FROM marker IDs, e.g. glyma.Wm82.gnm1.Sat_413 => Sat_413
-
-    identity    - Minimum percent identity in range 0..100 for blastn qcovhsp [90]
-    sample_len  - Maximum length of sequence variant to report, as a sample, in the GFF 9th column [10]
-    max_len     - Maximum variant length for which to report a GFF line [200]
-
-    work_dir    - work directory; default work_dir
+    perc_identity - Minimum percent identity in range 0..100 for BLAST or BURST percent identity [95]
+    qcov_identity - Minimum percent identity in range 0..100 for BLAST or BURST qcovhsp [80]
+    sample_len    - Maximum length of sequence variant to report, as a sample, in the GFF 9th column [10]
+    max_var_len   - Maximum variant length for which to report a GFF line [200]
+    min_flank     - Minimum length of flanking around a marker, to be used in search of the target genome. [100]
+    work_dir      - Work directory; [work_dir
 ```
 
 In a HPC environment, the workflow should be called using a job manager -- either interactively or via a job submission script.
