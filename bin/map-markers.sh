@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-version="2026-01-24"
+version="2026-01-25"
 
 # set -x  # uncomment for debugging
 set -o errexit -o errtrace -o nounset -o pipefail -o posix
@@ -251,7 +251,10 @@ elif [[ "$engine" == "burst" ]]; then
       burst_linux_DB12 -r "$WD/genome_to/$GNM_TO_BASE" \
                        -a "$WD/blastdb/$GNM_TO_BASE.acx" \
                        -o "$WD/blastdb/$GNM_TO_BASE.edx" \
-                       -d DNA 1000 \
+                       --noprogress \
+                       --makedb DNA 1000 \
+                       --dbpartition 4 \
+                       --shear 500 \
                        -i "0.$perc_identity" 
   fi
   
