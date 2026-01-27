@@ -6,5 +6,6 @@ dependencies:
   - bash
   - samtools
   - bedtools
-  - blast+
+  - blast
+  - burst
   - perl-bioperl-core

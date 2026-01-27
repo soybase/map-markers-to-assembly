@@ -13,7 +13,7 @@ date   # print timestamp
 
 # If using conda environment for dependencies:
 module load conda
-source activate ds-curate
+source activate map-markers
 
 PATH=$PWD/bin:$PATH
 
