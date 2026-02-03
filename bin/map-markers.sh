@@ -280,6 +280,7 @@ elif [[ "$engine" == "burst" ]]; then
 else 
   echo "The search engine must be specified as either \"burst\" (default) or \"blast\"."
   echo "The value of \"engine\" is currently set as $engine. Please check and correct the config file."
+  exit 1
 fi
 
 echo
