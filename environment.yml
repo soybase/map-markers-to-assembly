@@ -9,3 +9,5 @@ dependencies:
   - blast
   - burst
   - perl-bioperl-core
+  - parallel
+  - seqkit
