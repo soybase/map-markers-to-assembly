@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-version="2026-01-26"
+version="2026-02-03"
 
 # set -x  # uncomment for debugging
 set -o errexit -o errtrace -o nounset -o pipefail -o posix
@@ -188,7 +188,8 @@ if [ ! -f "${WD}/genome_to/$GNM_TO_BASE".gz ] || [ ! -f "${WD}/genome_to/$GNM_TO
 fi
 
 MRK_FR_BARE="${MRK_BASE%.*}"
-if [ ! -f "${WD}/marker_from/$MRK_FR_BARE".1kflank.fna ]; then
+MARKER_FASTA="${WD}/marker_from/$MRK_FR_BARE.1kflank.fna"
+if [ ! -f "$MARKER_FASTA" ]; then
   echo
   echo "== Put the marker information into four-column BED format, with 1000 bases on each side of the SNP."
   echo "== Need to adjust from GFF 1-based, closed [start, end] to BED 0-based, half-open [start-1, end)."
@@ -204,11 +205,11 @@ if [ ! -f "${WD}/marker_from/$MRK_FR_BARE".1kflank.fna ]; then
   bedtools getfasta -fi "$WD/genome_from/$GNM_FROM_BASE" \
                     -bed "$WD/marker_from/$MRK_FR_BARE".UD.bed \
                     -name | 
-                      filter_fasta_for_Ns.awk -v min_nonN="$min_flank" > "$WD/marker_from/$MRK_FR_BARE.1kflank.fna"
+                      filter_fasta_for_Ns.awk -v min_nonN="$min_flank" > "$MARKER_FASTA"
   
   echo
   echo "== Strip positional information, added by getfasta, from the retrieved sequence"
-  perl -pi -e 's/>(\S+)::.+/>$1/' "$WD/marker_from/$MRK_FR_BARE".1kflank.fna
+  perl -pi -e 's/>(\S+)::.+/>$1/' "$MARKER_FASTA"
 else 
   echo "Skipping creation of BED file and extraction of flanking sequence, since it exists."
 fi
@@ -226,20 +227,86 @@ if [[ "$engine" == "blast" ]]; then
                   -hash_index \
                   -out "$WD/blastdb/$GNM_TO_BASE"
   fi
+  BLASTDB_PREFIX="$WD/blastdb/$GNM_TO_BASE"
   
   if [ ! -f "$WD/blastout/$MRK_FR_BARE.x.$GNM_TO_BASE".bln ]; then
     echo
     echo "== Run BLAST"
     NOW=$(date)
     echo "TIME START BLAST: $NOW"
-    cat "$WD/marker_from/$MRK_FR_BARE".1kflank.fna | 
-      blastn -db "$WD/blastdb/$GNM_TO_BASE" \
-             -query - \
-             -num_threads "$NPROC" \
-             -evalue "$evalue" \
-             -perc_identity "$perc_identity" \
-             -outfmt "6 std qlen qcovs" |
-               cat > "$WD/blastout/$MRK_FR_BARE.x.$GNM_TO_BASE.bln"
+
+    echo "BLASTing markers to the reference genome in parallel using $NPROC jobs..."
+
+    # Create a temporary directory for split FASTA files and intermediate BLAST outputs
+    # Using $$ (process ID) makes the directory unique for concurrent runs of the script
+    TEMP_BLAST_DIR="$WD/blast_temp_$$"
+    echo "Temp directory: $TEMP_BLAST_DIR"
+    mkdir -p "$TEMP_BLAST_DIR" || { echo "ERROR: Could not create temporary directory $TEMP_BLAST_DIR"; exit 1; }
+
+    # --- Check for required tools for parallelization, and seqkit for fasta-splitting ---
+    if ! command -v seqkit &> /dev/null; then
+        echo "ERROR: 'seqkit' is required for parallel FASTA splitting but was not found."
+        echo "Please install it (e.g., 'conda install -c bioconda seqkit' or 'brew install seqkit')."
+        rm -rf "$TEMP_BLAST_DIR"
+        exit 1
+    fi
+    # Use GNU parallel to run multiple jobs concurrently
+    if ! command -v parallel &> /dev/null; then
+        echo "ERROR: 'GNU parallel' is required for parallel execution but was not found."
+        echo "Please install it (e.g., 'conda install -c conda-forge parallel' or 'brew install parallel')."
+        rm -rf "$TEMP_BLAST_DIR"
+        exit 1
+    fi
+
+    # Determine number of parallel jobs. Use NPROC which is already defined.
+    # Add a safeguard in case NPROC is 0 or unset (though it should be set by earlier logic)
+    NUM_PARALLEL_JOBS=${NPROC:-1}
+    if [ "$NUM_PARALLEL_JOBS" -eq 0 ]; then
+        NUM_PARALLEL_JOBS=1
+    fi
+
+    echo "Splitting query FASTA '$MARKER_FASTA' into $NUM_PARALLEL_JOBS chunks..."
+    # 'seqkit split -p N' will create N files. The output directory will contain files
+    # like 'marker.part_001.fasta', 'marker.part_002.fasta', etc.
+    seqkit split -p "$NUM_PARALLEL_JOBS" "$MARKER_FASTA" -O "$TEMP_BLAST_DIR" || {
+        echo "ERROR: Failed to split FASTA with seqkit."
+        rm -rf "$TEMP_BLAST_DIR"
+        exit 1
+    }
+
+    echo "Running $NUM_PARALLEL_JOBS parallel blastn jobs..."
+    # Find all split FASTA files and run blastn on them in parallel.
+    # Each blastn job will output to a temporary file within TEMP_BLAST_DIR.
+    # To avoid oversubscription, each parallel blastn job will use 1 CPU core, for NPROC cores total.
+    find "$TEMP_BLAST_DIR" -maxdepth 1 -name "*.fna" | \
+    parallel -j "$NUM_PARALLEL_JOBS" \
+        "blastn -query {} -db \"$BLASTDB_PREFIX\" -out {}.blast.tmp -outfmt \"6 std qlen qcovs\" -max_target_seqs 1 -evalue 1e-10" \
+        || {
+            echo "ERROR: One or more parallel blastn jobs failed. Check individual job logs if available."
+            exit 1
+        }
+
+    echo "Collecting results from parallel blastn jobs into blastout/$MRK_FR_BARE.x.$GNM_TO_BASE.bln"
+    # Concatenate all temporary BLAST output files into the final output.
+    cat "$TEMP_BLAST_DIR"/*.blast.tmp | 
+      sort -k1,1 -k12nr,12nr > "$WD/blastout/$MRK_FR_BARE.x.$GNM_TO_BASE.bln" || {
+        echo "ERROR: Failed to concatenate BLAST results."
+        exit 1
+    }
+
+    # Clean up temporary directory and its contents
+    echo "Cleaning up temporary files and directory: $TEMP_BLAST_DIR"
+    rm -rf "$TEMP_BLAST_DIR"
+
+# Next command (split across 8 lines): simple single blastn command.
+#    cat "$MARKER_FASTA" | 
+#      blastn -db "$WD/blastdb/$GNM_TO_BASE" \
+#             -query - \
+#             -num_threads "$NPROC" \
+#             -evalue "$evalue" \
+#             -perc_identity "$perc_identity" \
+#             -outfmt "6 std qlen qcovs" |
+#               cat > "$WD/blastout/$MRK_FR_BARE.x.$GNM_TO_BASE.bln"
     echo "DONE with BLAST"
     NOW=$(date)
     echo "TIME END BLAST:   $NOW"
@@ -264,7 +331,7 @@ elif [[ "$engine" == "burst" ]]; then
     NOW=$(date)
     echo "TIME START BURST: $NOW"
 
-    burst_linux_DB12 -q "$WD/marker_from/$MRK_FR_BARE.1kflank.fna" \
+    burst_linux_DB12 -q "$MARKER_FASTA" \
                      -a "$WD/blastdb/$GNM_TO_BASE.acx" \
                      -r "$WD/blastdb/$GNM_TO_BASE.edx" \
                      --noprogress \
@@ -310,7 +377,7 @@ elif [[ "$engine" == "burst" ]]; then
   # Also, the query length and the percent of the alignment relative to the query need to be added manually (cols 13 and 14).
 
   echo "$WD/blastout/$MRK_FR_BARE.x.$GNM_TO_BASE.bst"
-  seqlen "$WD/marker_from/$MRK_FR_BARE.1kflank.fna" | sort -k1,1 | uniq > "$WD/marker_from/$MRK_FR_BARE.len"
+  seqlen "$MARKER_FASTA" | sort -k1,1 | uniq > "$WD/marker_from/$MRK_FR_BARE.len"
   join <(sort -k1,1 -k11n,11n "$WD/blastout/$MRK_FR_BARE.x.$GNM_TO_BASE.bst") "$WD/marker_from/$MRK_FR_BARE.len" |
     perl -pe 's/ +/\t/g' | 
     awk '{print $0 "\t" int(100*($13-$11))/$13}' | 
