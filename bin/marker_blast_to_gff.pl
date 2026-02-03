@@ -40,7 +40,7 @@ my $usage = <<EOS;
   Options:   
     -qcov_identity  Percent identity for query coverage (qcovhsp), in range 0..100 [80]
     -sample_len  Maximum length of sequence variant to report, as a sample, in the GFF 9th column [10]
-    -max_var_len     Maximum variant length for which to report a GFF line [200]
+    -max_var_len   Maximum variant length for which to report a GFF line [25]
                    For a SNP, most variants are 1 base long, but there may be longer indels. 
                    SSRs are expected to be longer, but very long matches probably indicate either
                    poor or repetitive matches of the flanking sequences, or large genomic rearrangements.
@@ -54,7 +54,7 @@ EOS
 my ($genome_file, $out_file, $verbose, $help);
 my $qcov_identity=80;
 my $sample_len=10;
-my $max_var_len=200;
+my $max_var_len=25;
 my $gff_source="map-markers-to-assembly";
 my $gff_type="genetic_marker";
 my $gff_ID_prefix="TARGET_GENOME_VERSION";
@@ -64,7 +64,7 @@ GetOptions (
   "genome=s"        => \$genome_file,   
   "out=s"           => \$out_file,   
   "qcov_identity:i" => \$qcov_identity,
-  "sample_len:i"    =>    \$sample_len,
+  "sample_len:i"    => \$sample_len,
   "max_var_len:i"   => \$max_var_len,
   "gff_source:s"    => \$gff_source,
   "gff_type:s"      => \$gff_type,
