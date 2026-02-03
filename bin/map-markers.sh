@@ -280,7 +280,7 @@ if [[ "$engine" == "blast" ]]; then
     # To avoid oversubscription, each parallel blastn job will use 1 CPU core, for NPROC cores total.
     find "$TEMP_BLAST_DIR" -maxdepth 1 -name "*.fna" | \
     parallel -j "$NUM_PARALLEL_JOBS" \
-        "blastn -query {} -db \"$BLASTDB_PREFIX\" -out {}.blast.tmp -outfmt \"6 std qlen qcovs\" -max_target_seqs 1 -evalue 1e-10" \
+        "blastn -query {} -db $BLASTDB_PREFIX -out {}.blast.tmp -outfmt \"6 std qlen qcovs\" -evalue $evalue -perc_identity $perc_identity" \
         || {
             echo "ERROR: One or more parallel blastn jobs failed. Check individual job logs if available."
             exit 1
