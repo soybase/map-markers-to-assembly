@@ -77,7 +77,7 @@ files locally into a data directory using scp or equivalent, and then give the p
     sample_len    - Maximum length of sequence variant to report, as a sample, in the GFF 9th column [10]
     max_var_len   - Maximum variant length for which to report a GFF line [25]
     min_flank     - Minimum length of flanking around a marker, to be used in search of the target genome. [100]
-    work_dir      - Work directory; [work_dir
+    work_dir      - Work directory; [work_dir]
 ```
 
 In a HPC environment, the workflow should be called using a job manager -- either interactively or via a job submission script.
