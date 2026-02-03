@@ -91,7 +91,8 @@ The conda environment specified by the `environment.yml` config is called `map-m
 
     `conda env create`
 
-(NOTE for the SoyBase and Legume Information System project: a suitable project onvironment is `ds-curate`; in that case, just do `source activate ds-curate`.
+NOTE for the SoyBase and Legume Information System project: a suitable project onvironment is `ds-curate`; in that case, just do `source activate ds-curate`.
+See details regarding the [ds-curate environment here](https://github.com/legumeinfo/datastore-specifications/tree/main/PROTOCOLS#set-paths-and-start-a-conda-environment-with-software-needed-for-curation).
 
 ## Running the program:
 
