@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-version="2026-02-03"
+version="2026-02-04"
 
 # set -x  # uncomment for debugging
 set -o errexit -o errtrace -o nounset -o pipefail -o posix
@@ -235,78 +235,14 @@ if [[ "$engine" == "blast" ]]; then
     NOW=$(date)
     echo "TIME START BLAST: $NOW"
 
-    echo "BLASTing markers to the reference genome in parallel using $NPROC jobs..."
-
-    # Create a temporary directory for split FASTA files and intermediate BLAST outputs
-    # Using $$ (process ID) makes the directory unique for concurrent runs of the script
-    TEMP_BLAST_DIR="$WD/blast_temp_$$"
-    echo "Temp directory: $TEMP_BLAST_DIR"
-    mkdir -p "$TEMP_BLAST_DIR" || { echo "ERROR: Could not create temporary directory $TEMP_BLAST_DIR"; exit 1; }
-
-    # --- Check for required tools for parallelization, and seqkit for fasta-splitting ---
-    if ! command -v seqkit &> /dev/null; then
-        echo "ERROR: 'seqkit' is required for parallel FASTA splitting but was not found."
-        echo "Please install it (e.g., 'conda install -c bioconda seqkit' or 'brew install seqkit')."
-        rm -rf "$TEMP_BLAST_DIR"
-        exit 1
-    fi
-    # Use GNU parallel to run multiple jobs concurrently
-    if ! command -v parallel &> /dev/null; then
-        echo "ERROR: 'GNU parallel' is required for parallel execution but was not found."
-        echo "Please install it (e.g., 'conda install -c conda-forge parallel' or 'brew install parallel')."
-        rm -rf "$TEMP_BLAST_DIR"
-        exit 1
-    fi
-
-    # Determine number of parallel jobs. Use NPROC which is already defined.
-    # Add a safeguard in case NPROC is 0 or unset (though it should be set by earlier logic)
-    NUM_PARALLEL_JOBS=${NPROC:-1}
-    if [ "$NUM_PARALLEL_JOBS" -eq 0 ]; then
-        NUM_PARALLEL_JOBS=1
-    fi
-
-    echo "Splitting query FASTA '$MARKER_FASTA' into $NUM_PARALLEL_JOBS chunks..."
-    # 'seqkit split -p N' will create N files. The output directory will contain files
-    # like 'marker.part_001.fasta', 'marker.part_002.fasta', etc.
-    seqkit split -p "$NUM_PARALLEL_JOBS" "$MARKER_FASTA" -O "$TEMP_BLAST_DIR" || {
-        echo "ERROR: Failed to split FASTA with seqkit."
-        rm -rf "$TEMP_BLAST_DIR"
-        exit 1
-    }
-
-    echo "Running $NUM_PARALLEL_JOBS parallel blastn jobs..."
-    # Find all split FASTA files and run blastn on them in parallel.
-    # Each blastn job will output to a temporary file within TEMP_BLAST_DIR.
-    # To avoid oversubscription, each parallel blastn job will use 1 CPU core, for NPROC cores total.
-    find "$TEMP_BLAST_DIR" -maxdepth 1 -name "*.fna" | \
-    parallel -j "$NUM_PARALLEL_JOBS" \
-        "blastn -query {} -db $BLASTDB_PREFIX -out {}.blast.tmp -outfmt \"6 std qlen qcovs\" -evalue $evalue -perc_identity $perc_identity" \
-        || {
-            echo "ERROR: One or more parallel blastn jobs failed. Check individual job logs if available."
-            exit 1
-        }
-
-    echo "Collecting results from parallel blastn jobs into blastout/$MRK_FR_BARE.x.$GNM_TO_BASE.bln"
-    # Concatenate all temporary BLAST output files into the final output.
-    cat "$TEMP_BLAST_DIR"/*.blast.tmp | 
-      sort -k1,1 -k12nr,12nr > "$WD/blastout/$MRK_FR_BARE.x.$GNM_TO_BASE.bln" || {
-        echo "ERROR: Failed to concatenate BLAST results."
-        exit 1
-    }
-
-    # Clean up temporary directory and its contents
-    echo "Cleaning up temporary files and directory: $TEMP_BLAST_DIR"
-    rm -rf "$TEMP_BLAST_DIR"
-
-# Next command (split across 8 lines): simple single blastn command.
-#    cat "$MARKER_FASTA" | 
-#      blastn -db "$WD/blastdb/$GNM_TO_BASE" \
-#             -query - \
-#             -num_threads "$NPROC" \
-#             -evalue "$evalue" \
-#             -perc_identity "$perc_identity" \
-#             -outfmt "6 std qlen qcovs" |
-#               cat > "$WD/blastout/$MRK_FR_BARE.x.$GNM_TO_BASE.bln"
+    cat "$MARKER_FASTA" | 
+      blastn -db "$WD/blastdb/$GNM_TO_BASE" \
+             -query - \
+             -num_threads "$NPROC" \
+             -evalue "$evalue" \
+             -perc_identity "$perc_identity" \
+             -outfmt "6 std qlen qcovs" |
+               cat > "$WD/blastout/$MRK_FR_BARE.x.$GNM_TO_BASE.bln"
     echo "DONE with BLAST"
     NOW=$(date)
     echo "TIME END BLAST:   $NOW"
