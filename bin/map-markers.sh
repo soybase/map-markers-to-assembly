@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-version="2026-02-04"
+version="2026-02-05"
 
 # set -x  # uncomment for debugging
 set -o errexit -o errtrace -o nounset -o pipefail -o posix
@@ -142,7 +142,7 @@ fi
 # Add shell variables from config file. Defaults, overridden by config file
 marker_from=""; genome_from=""; genome_to=""; marker_to=""; gff_source=""; gff_ID_prefix=""; 
 engine="blast"; gff_type="genetic_marker"; perc_identity="95"; gff_prefix_regex='^[^.]+\.[^.]+\.[^.]+\.'; 
-evalue="1e-10"; qcov_identity="80"; sample_len="10"; max_var_len="25"; work_dir="work_dir"; min_flank="100";
+evalue="1e-20"; qcov_identity="80"; sample_len="10"; max_var_len="25"; work_dir="work_dir"; min_flank="100";
 # shellcheck source=/dev/null
 . "${CONF}"
 
@@ -239,6 +239,8 @@ if [[ "$engine" == "blast" ]]; then
       blastn -db "$WD/blastdb/$GNM_TO_BASE" \
              -query - \
              -num_threads "$NPROC" \
+             -best_hit_overhang 0.1 \
+             -best_hit_score_edge 0.1 \
              -evalue "$evalue" \
              -perc_identity "$perc_identity" \
              -outfmt "6 std qlen qcovs" |
@@ -271,6 +273,7 @@ elif [[ "$engine" == "burst" ]]; then
                      -a "$WD/blastdb/$GNM_TO_BASE.acx" \
                      -r "$WD/blastdb/$GNM_TO_BASE.edx" \
                      --noprogress \
+                     --threads "$NPROC" \
                      --forwardreverse \
                      --mode FORAGE \
                      -o "$WD/blastout/$MRK_FR_BARE.x.$GNM_TO_BASE.bst"
