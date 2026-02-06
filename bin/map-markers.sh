@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 
-version="2026-02-05"
+version="2026-02-06"
 
 # set -x  # uncomment for debugging
 set -o errexit -o errtrace -o nounset -o pipefail -o posix
+
+LC_ALL=C
 
 trap 'echo ${0##*/}:${LINENO} ERROR executing command: ${BASH_COMMAND}' ERR
 
