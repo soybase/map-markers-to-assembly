@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 
-version="2026-02-06"
+version="2026-02-07"
 
 # set -x  # uncomment for debugging
 set -o errexit -o errtrace -o nounset -o pipefail -o posix
 
-LC_ALL=C
+export LC_ALL=C
 
 trap 'echo ${0##*/}:${LINENO} ERROR executing command: ${BASH_COMMAND}' ERR
 
@@ -44,17 +44,17 @@ SYNOPSIS
 
     marker_to   - Name for new marker file (gff3); will be written to work_dir/marker_to/
 
-    qcov_identity    - Minimum percent identity in range 0..100 for blastn qcovhsp [90]
-    perc_identity    - Minimum percent identity in range 0..100 for blastn sequence match [99]
-    sample_len  - Maximum length of sequence variant to report, as a sample, in the GFF 9th column [10]
-    max_var_len     - Maximum variant length for which to report a GFF line [200]
-    engine      - blast or burst [blast]
-                    BLAST should work well in essentially every situation. The reason to consider BURST is that it is
-                    much faster for very large (100k+) marker sets. The downsides to BURST are lower sensitivity 
-                    (~5% vs. BLAST in this context), and the target-genome index files are about 20x larger than 
-                    for BLAST; and their creation takes a large amount of memory (500 GB for a typical genome).
+    qcov_identity - Minimum percent identity in range 0..100 for blastn qcovhsp [80]
+    perc_identity - Minimum percent identity in range 0..100 for blastn sequence match [95]
+    sample_len    - Maximum length of sequence variant to report, as a sample, in the GFF 9th column [10]
+    max_var_len   - Maximum variant length for which to report a GFF line [25]
+    engine        - blast or burst [blast]
+                      BLAST should work well in essentially every situation. The reason to consider BURST is that it
+                      is much faster for very large (100k+) marker sets. The downsides to BURST are lower sensitivity 
+                      (~5% vs. BLAST in this context), and the target-genome index files are about 20x larger than 
+                      for BLAST; and their creation takes a large amount of memory (500 GB for a typical genome).
 
-    work_dir    - work directory; default work_dir
+    work_dir      - work directory; default work_dir
 
 AUTHOR
     Steven Cannon <steven.cannon@usda.gov>
@@ -229,7 +229,6 @@ if [[ "$engine" == "blast" ]]; then
                   -hash_index \
                   -out "$WD/blastdb/$GNM_TO_BASE"
   fi
-  BLASTDB_PREFIX="$WD/blastdb/$GNM_TO_BASE"
   
   if [ ! -f "$WD/blastout/$MRK_FR_BARE.x.$GNM_TO_BASE".bln ]; then
     echo
@@ -237,16 +236,15 @@ if [[ "$engine" == "blast" ]]; then
     NOW=$(date)
     echo "TIME START BLAST: $NOW"
 
-    cat "$MARKER_FASTA" | 
-      blastn -db "$WD/blastdb/$GNM_TO_BASE" \
-             -query - \
-             -num_threads "$NPROC" \
-             -best_hit_overhang 0.1 \
-             -best_hit_score_edge 0.1 \
-             -evalue "$evalue" \
-             -perc_identity "$perc_identity" \
-             -outfmt "6 std qlen qcovs" |
-               cat > "$WD/blastout/$MRK_FR_BARE.x.$GNM_TO_BASE.bln"
+    blastn -db "$WD/blastdb/$GNM_TO_BASE" \
+           -query "$MARKER_FASTA" \
+           -num_threads "$NPROC" \
+           -best_hit_overhang 0.1 \
+           -best_hit_score_edge 0.1 \
+           -evalue "$evalue" \
+           -perc_identity "$perc_identity" \
+           -outfmt "6 std qlen qcovs" |
+             cat > "$WD/blastout/$MRK_FR_BARE.x.$GNM_TO_BASE.bln"
     echo "DONE with BLAST"
     NOW=$(date)
     echo "TIME END BLAST:   $NOW"
@@ -286,7 +284,7 @@ elif [[ "$engine" == "burst" ]]; then
     echo "== Skipping BURST, as the output file exists."
   fi
 else 
-  echo "The search engine must be specified as either \"burst\" (default) or \"blast\"."
+  echo "The search engine must be specified as either \"blast\" (default) or \"burst\"."
   echo "The value of \"engine\" is currently set as $engine. Please check and correct the config file."
   exit 1
 fi
@@ -346,9 +344,9 @@ mv "$WD/marker_to/tmp.gff" "$WD/marker_to/$marker_to.gff3"
 
 echo
 echo "== Compare the initial and mapped markers and report"
-echo "==   Marker list 1: $WD/$work_dir/marker_from/lis.$MRK_FR_BARE"
-echo "==   Marker list 2: $WD/$work_dir/marker_to/lis.$marker_to"
-echo "==   Marker report: $WD/$work_dir/marker_to/report.${MRK_FR_BARE}--${marker_to}.tsv"
+echo "==   Marker list 1: $WD/marker_from/lis.$MRK_FR_BARE"
+echo "==   Marker list 2: $WD/marker_to/lis.$marker_to"
+echo "==   Marker report: $WD/marker_to/report.${MRK_FR_BARE}--${marker_to}.tsv"
 
 # Extract ID and allele from the "from" bed file, and print "+" orientation for all
 cat "$WD/marker_from/$MRK_FR_BARE.bed" | awk -v OFS="\t" '{print $4, "+", $5}' | sort > "$WD/marker_from/lis.$MRK_FR_BARE"
