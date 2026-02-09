@@ -29,7 +29,7 @@ my $usage = <<EOS;
 
    The BLAST output should be filtered such that the matches of the flanking query sequences
    (.UP and .DN) are near-perfect top matches, and sorted relative to the target sequence and
-   such the .UP and .DN for a given marker are adjacent in the filtered BLAST output.
+   such that the .UP and .DN for a given marker are adjacent in the filtered BLAST output.
    The standard ordering of the BLAST output should be sufficient.
 
   Required:
@@ -38,9 +38,9 @@ my $usage = <<EOS;
     -out         Name for new marker files, sans extension. Three files will be written: .bed, .gff3, .log
     
   Options:   
-    -qcov_identity  Percent identity for query coverage (qcovhsp), in range 0..100 [90]
+    -qcov_identity  Percent identity for query coverage (qcovhsp), in range 0..100 [80]
     -sample_len  Maximum length of sequence variant to report, as a sample, in the GFF 9th column [10]
-    -max_len     Maximum variant length for which to report a GFF line [200]
+    -max_var_len   Maximum variant length for which to report a GFF line [25]
                    For a SNP, most variants are 1 base long, but there may be longer indels. 
                    SSRs are expected to be longer, but very long matches probably indicate either
                    poor or repetitive matches of the flanking sequences, or large genomic rearrangements.
@@ -52,26 +52,26 @@ my $usage = <<EOS;
 EOS
 
 my ($genome_file, $out_file, $verbose, $help);
-my $qcov_identity=90;
+my $qcov_identity=80;
 my $sample_len=10;
-my $max_len=200;
+my $max_var_len=25;
 my $gff_source="map-markers-to-assembly";
 my $gff_type="genetic_marker";
 my $gff_ID_prefix="TARGET_GENOME_VERSION";
 my $gff_prefix_regex="^[^.]+\.[^.]+\.[^.]+\.";
 
 GetOptions (
-  "genome=s"     => \$genome_file,   
-  "out=s"        => \$out_file,   
-  "qcov_identity:i"   => \$qcov_identity,
-  "sample_len:i" => \$sample_len,
-  "max_len:i"    => \$max_len,
-  "gff_source:s" => \$gff_source,
-  "gff_type:s"   => \$gff_type,
+  "genome=s"        => \$genome_file,   
+  "out=s"           => \$out_file,   
+  "qcov_identity:i" => \$qcov_identity,
+  "sample_len:i"    => \$sample_len,
+  "max_var_len:i"   => \$max_var_len,
+  "gff_source:s"    => \$gff_source,
+  "gff_type:s"      => \$gff_type,
   "gff_ID_prefix:s" => \$gff_ID_prefix,
   "gff_prefix_regex:s" => \$gff_prefix_regex,
-  "verbose"      => \$verbose,
-  "help"         => \$help,
+  "verbose"         => \$verbose,
+  "help"            => \$help,
 );
 
 die "$usage" if $help;
@@ -124,6 +124,7 @@ while (<>) {
   else {
     if (defined $prev_base && $base_id eq $prev_base) {
       if ($this_start > $prev_end && $up_or_dn =~ /DN$/) { # forward-forward
+        if ($verbose){say "AA: handling forward-forward for $name; $this_start > $prev_end && $up_or_dn" }
         my ($short_var, $full_var);
         if ( ($this_start-1)-$prev_end < 0 ) {
           my ($start, $end) = ($prev_end, $this_start-1);
@@ -132,6 +133,7 @@ while (<>) {
         }
         elsif ( ($this_start-1)-$prev_end == 0 ) { # marker is of zero length - probably an indel
           ($short_var, $full_var) = ("_", "_");
+          if ($verbose){say "AA:   $this_start-1, $prev_end, $short_var";}
           $prev_end--; # adjust the start coord to preserve the (collapsed) marker
         }
         else { # start-end (bed coords) are >=1
@@ -154,6 +156,7 @@ while (<>) {
         }
       } 
       elsif ($this_start <= $prev_end && $up_or_dn =~ /DN$/) { # forward-reverse
+        if ($verbose){say "BB: handling forward-reverse for $name; $this_start <= $prev_end && $up_or_dn"}
         my ($short_var, $full_var);
         if ( ($prev_end-1)-$this_start < 0 ) {
           my ($start, $end) = ($this_start, $prev_end-1);
@@ -162,6 +165,7 @@ while (<>) {
         }
         elsif ( ($prev_end-1)-$this_start == 0 ) { # marker is of zero length - probably an indel
           ($short_var, $full_var) = ("_", "_");
+          if ($verbose){say "BB:   $this_start-1, $prev_end, $short_var";}
           $this_start--; # adjust the start coord to preserve the (collapsed) marker
         }
         else { # start-end (bed coords) are >=1
@@ -212,19 +216,19 @@ sub get_variant {
     my $seqobj = Bio::Seq->new(-seq => $full_seq, -alphabet => "dna");
     my $revcom_obj = $seqobj->revcom();
     my $revcom_seq = $revcom_obj->seq();
-    #say "SEQ: " . substr($full_seq, 0, $max_len);
-    #say "REV: " . substr($revcom_seq, 0, $max_len);
+    #say "SEQ: " . substr($full_seq, 0, $max_var_len);
+    #say "REV: " . substr($revcom_seq, 0, $max_var_len);
     $full_seq = $revcom_seq;
   }
   my $seq = $full_seq;
   my $len = length($full_seq);
-  if ( $len > $sample_len && $len <= $max_len ){
+  if ( $len > $sample_len && $len <= $max_var_len ){
     $seq = substr($full_seq, 0, $sample_len);
     $seq = $seq . "_from_$len" . "_nt";
   }
-  if ( $len > $sample_len && $len > $max_len ){
-    $seq = substr($full_seq, 0, $max_len);
-    $seq = "WARN variant is $len" . " nt. First $max_len nt: " . $seq;
+  if ( $len > $sample_len && $len > $max_var_len ){
+    $seq = substr($full_seq, 0, $max_var_len);
+    $seq = "WARN variant is $len" . " nt. First $max_var_len nt: " . $seq;
   }
   return($seq, $full_seq);
 }
@@ -235,4 +239,5 @@ Steven Cannon
 2025-01-31 Require GFF output filename and also print to a derived bed file.
 2025-02-04 Print warnings to a log file.
 2025-02-05 Add orientation and score to BED output, and report rev-complimented sequence if mapping to negative strand
-2026-01-14 Change handling of identity, now calling it qcov_identity to distinguish it from percent identity
+2026-01-14 Change variable for identity, now calling it qcov_identity to distinguish it from percent identity
+2026-01-26 Change max_len to max_var_len; other cosmetic cleanup

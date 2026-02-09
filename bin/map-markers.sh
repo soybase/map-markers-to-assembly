@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 
-version="2026-01-14"
+version="2026-02-07"
 
 # set -x  # uncomment for debugging
 set -o errexit -o errtrace -o nounset -o pipefail -o posix
+
+export LC_ALL=C
 
 trap 'echo ${0##*/}:${LINENO} ERROR executing command: ${BASH_COMMAND}' ERR
 
@@ -42,12 +44,17 @@ SYNOPSIS
 
     marker_to   - Name for new marker file (gff3); will be written to work_dir/marker_to/
 
-    qcov_identity    - Minimum percent identity in range 0..100 for blastn qcovhsp [90]
-    perc_identity    - Minimum percent identity in range 0..100 for blastn sequence match [99]
-    sample_len  - Maximum length of sequence variant to report, as a sample, in the GFF 9th column [10]
-    max_len     - Maximum variant length for which to report a GFF line [200]
+    qcov_identity - Minimum percent identity in range 0..100 for blastn qcovhsp [80]
+    perc_identity - Minimum percent identity in range 0..100 for blastn sequence match [95]
+    sample_len    - Maximum length of sequence variant to report, as a sample, in the GFF 9th column [10]
+    max_var_len   - Maximum variant length for which to report a GFF line [25]
+    engine        - blast or burst [blast]
+                      BLAST should work well in essentially every situation. The reason to consider BURST is that it
+                      is much faster for very large (100k+) marker sets. The downsides to BURST are lower sensitivity 
+                      (~5% vs. BLAST in this context), and the target-genome index files are about 20x larger than 
+                      for BLAST; and their creation takes a large amount of memory (500 GB for a typical genome).
 
-    work_dir    - work directory; default work_dir
+    work_dir      - work directory; default work_dir
 
 AUTHOR
     Steven Cannon <steven.cannon@usda.gov>
@@ -80,13 +87,28 @@ if ! type marker_gff_to_bed_and_var.pl &> /dev/null; then
 fi
 
 ##########
-
+# Some helper functions ...
 cat_or_zcat() {
   case ${1} in
     *.gz) gzip -dc "$@" ;;
        *) cat "$@" ;;
   esac
 }
+
+# print seqid length
+seqlen() {
+  fastafile=${1}
+  awk '/^>/ {if (len) print len; len = 0; printf("%s\t", substr($1,2)); next}
+       { len+=length }
+       END {if (len) print len}' "$fastafile"
+}
+
+# Adjust zero-based, half-open BURST alignment coords to match one-based, closed BLAST coords
+convert_zero_based_to_one_based() {
+  awk 'BEGIN{ OFS="\t"} 
+       $10 - $9 > 0 { $9 = $9 + 1; print } 
+       $10 - $9 < 0 { $10 = $10 + 1; print }'
+} 
 
 ##########
 
@@ -121,8 +143,8 @@ fi
 
 # Add shell variables from config file. Defaults, overridden by config file
 marker_from=""; genome_from=""; genome_to=""; marker_to=""; gff_source=""; gff_ID_prefix=""; 
-gff_type="genetic_marker"; perc_identity="95"; gff_prefix_regex='^[^.]+\.[^.]+\.[^.]+\.'; 
-evalue="1e-10"; qcov_identity="90"; sample_len="10"; max_len="25"; work_dir="work_dir"; min_flank="100";
+engine="blast"; gff_type="genetic_marker"; perc_identity="95"; gff_prefix_regex='^[^.]+\.[^.]+\.[^.]+\.'; 
+evalue="1e-20"; qcov_identity="80"; sample_len="10"; max_var_len="25"; work_dir="work_dir"; min_flank="100";
 # shellcheck source=/dev/null
 . "${CONF}"
 
@@ -168,7 +190,8 @@ if [ ! -f "${WD}/genome_to/$GNM_TO_BASE".gz ] || [ ! -f "${WD}/genome_to/$GNM_TO
 fi
 
 MRK_FR_BARE="${MRK_BASE%.*}"
-if [ ! -f "${WD}/marker_from/$MRK_FR_BARE".1kflank.fna ]; then
+MARKER_FASTA="${WD}/marker_from/$MRK_FR_BARE.1kflank.fna"
+if [ ! -f "$MARKER_FASTA" ]; then
   echo
   echo "== Put the marker information into four-column BED format, with 1000 bases on each side of the SNP."
   echo "== Need to adjust from GFF 1-based, closed [start, end] to BED 0-based, half-open [start-1, end)."
@@ -184,68 +207,146 @@ if [ ! -f "${WD}/marker_from/$MRK_FR_BARE".1kflank.fna ]; then
   bedtools getfasta -fi "$WD/genome_from/$GNM_FROM_BASE" \
                     -bed "$WD/marker_from/$MRK_FR_BARE".UD.bed \
                     -name | 
-                      filter_fasta_for_Ns.awk -v min_nonN="$min_flank" > "$WD/marker_from/$MRK_FR_BARE".1kflank.fna
+                      filter_fasta_for_Ns.awk -v min_nonN="$min_flank" > "$MARKER_FASTA"
   
   echo
   echo "== Strip positional information, added by getfasta, from the retrieved sequence"
-  perl -pi -e 's/>(\S+)::.+/>$1/' "$WD/marker_from/$MRK_FR_BARE".1kflank.fna
+  perl -pi -e 's/>(\S+)::.+/>$1/' "$MARKER_FASTA"
 else 
   echo "Skipping creation of BED file and extraction of flanking sequence, since it exists."
 fi
 
 echo
-echo "== Make BLAST output directories and index files"
+echo "== Make sequence-search output directories and index files for search engine $engine"
 mkdir -p "$WD/blastdb" "$WD/blastout"
+  echo "genome_to: genome_to/$GNM_TO_BASE"
 
-echo "genome_from: genome_from/$GNM_FROM_BASE"
-echo "genome_to: genome_to/$GNM_TO_BASE"
-if [ ! -f "$WD/blastdb/$GNM_TO_BASE".nin ]; then
-  cat_or_zcat "$WD/genome_to/$GNM_TO_BASE" | 
-    makeblastdb -in - -dbtype nucl \
-                -title "$GNM_TO_BASE" -hash_index -out "$WD/blastdb/$GNM_TO_BASE"
-fi
+if [[ "$engine" == "blast" ]]; then
+  if [ ! -f "$WD/blastdb/$GNM_TO_BASE".nin ]; then
+    cat_or_zcat "$WD/genome_to/$GNM_TO_BASE" | 
+      makeblastdb -in - -dbtype nucl \
+                  -title "$GNM_TO_BASE" \
+                  -hash_index \
+                  -out "$WD/blastdb/$GNM_TO_BASE"
+  fi
+  
+  if [ ! -f "$WD/blastout/$MRK_FR_BARE.x.$GNM_TO_BASE".bln ]; then
+    echo
+    echo "== Run BLAST"
+    NOW=$(date)
+    echo "TIME START BLAST: $NOW"
 
-if [ ! -f "$WD/blastout/$MRK_FR_BARE.x.$GNM_TO_BASE".bln ]; then
-  echo
-  echo "== Run BLAST"
-  cat "$WD/marker_from/$MRK_FR_BARE".1kflank.fna | 
     blastn -db "$WD/blastdb/$GNM_TO_BASE" \
-           -query - \
+           -query "$MARKER_FASTA" \
            -num_threads "$NPROC" \
+           -best_hit_overhang 0.1 \
+           -best_hit_score_edge 0.1 \
            -evalue "$evalue" \
            -perc_identity "$perc_identity" \
            -outfmt "6 std qlen qcovs" |
              cat > "$WD/blastout/$MRK_FR_BARE.x.$GNM_TO_BASE.bln"
-  echo "DONE with BLAST"
+    echo "DONE with BLAST"
+    NOW=$(date)
+    echo "TIME END BLAST:   $NOW"
+  else 
+    echo "== Skipping BLAST, as the output file exists."
+  fi
+elif [[ "$engine" == "burst" ]]; then
+  if [ ! -f "$WD/blastdb/$GNM_TO_BASE.edx" ]; then
+      burst_linux_DB12 -r "$WD/genome_to/$GNM_TO_BASE" \
+                       -a "$WD/blastdb/$GNM_TO_BASE.acx" \
+                       -o "$WD/blastdb/$GNM_TO_BASE.edx" \
+                       --noprogress \
+                       --makedb DNA 1000 \
+                       --dbpartition 4 \
+                       --shear 500 \
+                       -i "0.$perc_identity" 
+  fi
+  
+  if [ ! -f "$WD/blastout/$MRK_FR_BARE.x.$GNM_TO_BASE.bst" ]; then
+    echo
+    echo "== Run BURST"
+    NOW=$(date)
+    echo "TIME START BURST: $NOW"
+
+    burst_linux_DB12 -q "$MARKER_FASTA" \
+                     -a "$WD/blastdb/$GNM_TO_BASE.acx" \
+                     -r "$WD/blastdb/$GNM_TO_BASE.edx" \
+                     --noprogress \
+                     --threads "$NPROC" \
+                     --forwardreverse \
+                     --mode FORAGE \
+                     -o "$WD/blastout/$MRK_FR_BARE.x.$GNM_TO_BASE.bst"
+    echo "DONE with BURST"
+    NOW=$(date)
+    echo "TIME END BURST:   $NOW"
+  else 
+    echo "== Skipping BURST, as the output file exists."
+  fi
 else 
-  echo "== Skipping BLAST, as the output file exists."
+  echo "The search engine must be specified as either \"blast\" (default) or \"burst\"."
+  echo "The value of \"engine\" is currently set as $engine. Please check and correct the config file."
+  exit 1
 fi
 
 echo
-echo "== Filter BLAST output and write new marker file (as a tsv file)"
-echo "$WD/blastout/$MRK_FR_BARE.x.$GNM_TO_BASE.bln"
-cat "$WD/blastout/$MRK_FR_BARE.x.$GNM_TO_BASE.bln" | top_line.awk | 
-  marker_blast_to_gff.pl -genome "$WD/genome_to/$GNM_TO_BASE" \
-                         -gff_source "$gff_source" \
-                         -gff_type "$gff_type" \
-                         -gff_ID_prefix "$gff_ID_prefix" \
-                         -max_len "$max_len" \
-                         -qcov_identity "$qcov_identity" \
-                         -sample_len "$sample_len" \
-                         -gff_prefix_regex "$gff_prefix_regex" \
-                         -out "$WD/marker_to/$marker_to"
+echo "== Filter $engine output and write new marker file (as a tsv file)"
+
+if [[ "$engine" == "blast" ]]; then
+  echo "$WD/blastout/$MRK_FR_BARE.x.$GNM_TO_BASE.bln"
+  # The blastn used above reports 14 fields, ending with with "qlen qcovs"
+  cat "$WD/blastout/$MRK_FR_BARE.x.$GNM_TO_BASE.bln" | top_line.awk | 
+    sort -k2,2 -k1r,1r > "$WD/blastout/$MRK_FR_BARE.x.$GNM_TO_BASE.bln.filter"
+
+  cat "$WD/blastout/$MRK_FR_BARE.x.$GNM_TO_BASE.bln.filter" |
+    marker_blast_to_gff.pl -genome "$WD/genome_to/$GNM_TO_BASE" \
+                           -gff_source "$gff_source" \
+                           -gff_type "$gff_type" \
+                           -gff_ID_prefix "$gff_ID_prefix" \
+                           -max_var_len "$max_var_len" \
+                           -qcov_identity "$qcov_identity" \
+                           -sample_len "$sample_len" \
+                           -gff_prefix_regex "$gff_prefix_regex" \
+                           -out "$WD/marker_to/$marker_to"   # \
+                         # -verbose
+elif [[ "$engine" == "burst" ]]; then
+  # Calculate and add query sequence length and qcovs (percentage of the query that matches the target)
+
+  # Note that in burst tabular output, the starting coordinate of the match is one less than would be reported by blast.
+  # Also, the query length and the percent of the alignment relative to the query need to be added manually (cols 13 and 14).
+
+  echo "$WD/blastout/$MRK_FR_BARE.x.$GNM_TO_BASE.bst"
+  seqlen "$MARKER_FASTA" | sort -k1,1 | uniq > "$WD/marker_from/$MRK_FR_BARE.len"
+  join <(sort -k1,1 -k11n,11n "$WD/blastout/$MRK_FR_BARE.x.$GNM_TO_BASE.bst") "$WD/marker_from/$MRK_FR_BARE.len" |
+    perl -pe 's/ +/\t/g' | 
+    awk '{print $0 "\t" int(100*($13-$11))/$13}' | 
+    convert_zero_based_to_one_based |
+    sort -k1,1 -k11n,11n -k2,2 | top_line.awk |
+    sort -k2,2 -k1r,1r > "$WD/blastout/$MRK_FR_BARE.x.$GNM_TO_BASE.bst.filter"
+
+  cat "$WD/blastout/$MRK_FR_BARE.x.$GNM_TO_BASE.bst.filter" |
+    marker_blast_to_gff.pl -genome "$WD/genome_to/$GNM_TO_BASE" \
+                           -gff_source "$gff_source" \
+                           -gff_type "$gff_type" \
+                           -gff_ID_prefix "$gff_ID_prefix" \
+                           -max_var_len "$max_var_len" \
+                           -qcov_identity "$qcov_identity" \
+                           -sample_len "$sample_len" \
+                           -gff_prefix_regex "$gff_prefix_regex" \
+                           -out "$WD/marker_to/$marker_to"  # \
+                         # -verbose
+fi
 
 echo
 echo "== Sort GFF"
 sort_gff.pl "$WD/marker_to/$marker_to.gff3" > "$WD/marker_to/tmp.gff"
 mv "$WD/marker_to/tmp.gff" "$WD/marker_to/$marker_to.gff3"
 
-
 echo
 echo "== Compare the initial and mapped markers and report"
-echo "==   Marker list 1: $WD/$work_dir/marker_from/lis.$MRK_FR_BARE"
-echo "==   Marker list 2: $WD/$work_dir/marker_to/lis.$marker_to"
-echo "==   Marker report: $WD/$work_dir/marker_to/report.${MRK_FR_BARE}--${marker_to}.tsv"
+echo "==   Marker list 1: $WD/marker_from/lis.$MRK_FR_BARE"
+echo "==   Marker list 2: $WD/marker_to/lis.$marker_to"
+echo "==   Marker report: $WD/marker_to/report.${MRK_FR_BARE}--${marker_to}.tsv"
 
 # Extract ID and allele from the "from" bed file, and print "+" orientation for all
 cat "$WD/marker_from/$MRK_FR_BARE.bed" | awk -v OFS="\t" '{print $4, "+", $5}' | sort > "$WD/marker_from/lis.$MRK_FR_BARE"
