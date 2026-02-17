@@ -6,7 +6,37 @@ This little workflow is driven by the shell script map-markers.sh.
 It extracts flanking sequence around a sequenced-based marker from one genome assembly, then searches 
 for the best corresponding sequence in a second assembly, and reports the locations of the SNP 
 marker in the second assembly.
-Additionally, the process reports the reference allele for each variant in the FROM and the TO genomes.
+
+The output, which goes to the "work_dir/marker_to" directory, includes three report files:
+
+  * orient.vigra.VC1973A.gnm6.mrk.test--vigra.Weilv-9.gnm1.mrk.test.txt
+  * report.vigra.VC1973A.gnm6.mrk.test--vigra.Weilv-9.gnm1.mrk.test.tsv
+  * vigra.Weilv-9.gnm1.mrk.test.log
+
+... and two primary outputs:
+  * vigra.Weilv-9.gnm1.mrk.test.bed
+  * vigra.Weilv-9.gnm1.mrk.test.gff3
+
+Note that the bed file will have orientations reflecting the query and target around each marker.
+The markers and alleles are all reported in the molecule (FWD) orientation in the GFF, whereas in the 
+bed file, the alleles are reported for the "to" genome relative to the "from" genome around those markers.
+In the "report" file, the alleles are given both in the target FWD orientation and in the relative orientation:
+```
+                                              from
+                                                     to;bed
+                                                            to;gff
+                                              vvv    vvv    vvv
+  #markerID  compare   len1   len2   orient   var1   var2   var2_fwd
+  snp1       same      1      1      +        T      T      T
+  snp2       same      1      1      +        G      G      G
+  snp3       NOT       1      1      +        G      A      A
+  snp4       same      1      1      -        T      T      A
+  snp5       same      1      1      -        T      T      A
+  snp6       same      1      1      -        G      G      C
+  snp7       same      1      1      -        A      A      T
+  snp8       NOT       1      2      -        C      CT     AG
+  snp9       NOT       1      1      -        C      T      A
+```
 
 The following are the main steps:
 
@@ -22,10 +52,11 @@ The dependencies (see installation instructions below) are:
   * BioPerl
   * blast or burst (blast preferred)
 
-and six scripts in the bin directory:
+and seven scripts in the bin directory:
   * map-markers.sh
   * marker_blast_to_gff.pl
   * marker_gff_to_bed_and_var.pl
+  * marker_report.pl
   * top_line.awk
   * sort_gff.pl
   * filter_fasta_for_Ns.awk
