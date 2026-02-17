@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-version="2026-02-07"
+version="2026-02-17"
 
 # set -x  # uncomment for debugging
 set -o errexit -o errtrace -o nounset -o pipefail -o posix
@@ -338,49 +338,36 @@ elif [[ "$engine" == "burst" ]]; then
 fi
 
 echo
-echo "== Sort GFF"
+echo "== Sort GFF and bed files"
 sort_gff.pl "$WD/marker_to/$marker_to.gff3" > "$WD/marker_to/tmp.gff"
 mv "$WD/marker_to/tmp.gff" "$WD/marker_to/$marker_to.gff3"
+
+sort -k1,1 -k2n,2n "$WD/marker_to/$marker_to.bed" > "$WD/marker_to/tmp.bed"
+mv "$WD/marker_to/tmp.bed" "$WD/marker_to/$marker_to.bed"
 
 echo
 echo "== Compare the initial and mapped markers and report"
 echo "==   Marker list 1: $WD/marker_from/lis.$MRK_FR_BARE"
-echo "==   Marker list 2: $WD/marker_to/lis.$marker_to"
+echo "==   Marker list 2: $WD/blastout/lis.$marker_to"
 echo "==   Marker report: $WD/marker_to/report.${MRK_FR_BARE}--${marker_to}.tsv"
 
 # Extract ID and allele from the "from" bed file, and print "+" orientation for all
 cat "$WD/marker_from/$MRK_FR_BARE.bed" | awk -v OFS="\t" '{print $4, "+", $5}' | sort > "$WD/marker_from/lis.$MRK_FR_BARE"
 
-# Next: Extract ID, allele, and orientation from the "to" bed file
-cut -f4,6,7 "$WD/marker_to/$marker_to.bed" | sort > "$WD/marker_to/lis.$marker_to"
+# Extract ID, allele, and orientation from the "to" bed file
+cut -f4,6,7 "$WD/marker_to/$marker_to.bed" | sort > "$WD/blastout/lis.$marker_to"
 
-# Fields in joined result: markerID, orient, allele_gnm1, orient, allele_gnm2
-#                              0        1  2  3  4
-#                          ss715578401  +  G  +  G
-#                          ss715578490  +  G  -  C
-join -a1 "$WD/marker_from/lis.$MRK_FR_BARE" "$WD/marker_to/lis.$marker_to" |
-  perl -F"\s" -lane 'BEGIN{ print join("\t", "#markerID", "compare", "len1", "len2", "orient", "var1", "var2") };
-                     if (scalar(@F)==3){ # marker not in target genome
-                       print join( "\t", $F[0], "NULL", length($F[2]), 0, ".", $F[2], "NULL");
-                     }
-                     else {
-                       if ($F[2] eq $F[4]){ # allele is the same in both genomes
-                         print join( "\t", $F[0], "same", length($F[2]), length($F[4]), $F[3], $F[2], $F[4]);
-                       }
-                       else {
-                         print join( "\t", $F[0], "NOT",  length($F[2]), length($F[4]), $F[3], $F[2], $F[4]);
-                       }
-                     }
-                    '  > "$WD/marker_to/report.${MRK_FR_BARE}--${marker_to}.tsv"
-
-# TO DO: get allele from bed file rather than gff, or add orientation to bed file
+# Generate a report that compares the markers and alleles in the "from" and "to" genomes.
+# The two lists below are three-column tables, containing:  marker, orient, allele
+marker_report.pl "$WD/marker_from/lis.$MRK_FR_BARE" "$WD/blastout/lis.$marker_to" |
+  cat > "$WD/marker_to/report.${MRK_FR_BARE}--${marker_to}.tsv"
 
 echo
 echo "== Generate report of marker orientations"
-cat "$WD/marker_to/$marker_to.gff3" | sort -k1,1 -k4n,4n |
-   awk -v ORS=" " '$1 == prev {print $8; prev=$1} 
-                   NR!=1 && $1 != prev {print "\n\n" $1 "\n" $8 ; prev=$1} 
-                   NR==1 {print $1 "\n" $8 ; prev=$1}
+cat "$WD/marker_to/$marker_to.bed" | sort -k1,1 -k2n,2n |
+   awk -v ORS=" " '$1 == prev {print $6; prev=$1} 
+                   NR!=1 && $1 != prev {print "\n\n" $1 "\n" $6 ; prev=$1} 
+                   NR==1 {print $1 "\n" $6 ; prev=$1}
                    END{print "\n"}' > "$WD/marker_to/orient.${MRK_FR_BARE}--${marker_to}.txt"
 
 echo
