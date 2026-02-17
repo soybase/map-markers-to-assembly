@@ -36,6 +36,9 @@ my $usage = <<EOS;
     STDIN with BLAST output, created with -outfmt "6 std qlen qcovhsp"
     -genome      Target genome file in which variants are to be mapped (uncompressed)
     -out         Name for new marker files, sans extension. Three files will be written: .bed, .gff3, .log
+                 Note that the bed file will have orientations reflecting the query and target around each marker,
+                 whereas the gff file will have only "+" orientations, with alleles reverse-complemented
+                 where the query and target around a marker were in opposite orientations.
     
   Options:   
     -qcov_identity  Percent identity for query coverage (qcovhsp), in range 0..100 [80]
@@ -126,6 +129,7 @@ while (<>) {
       if ($this_start > $prev_end && $up_or_dn =~ /DN$/) { # forward-forward
         if ($verbose){say "AA: handling forward-forward for $name; $this_start > $prev_end && $up_or_dn" }
         my ($short_var, $full_var);
+
         if ( ($this_start-1)-$prev_end < 0 ) {
           my ($start, $end) = ($prev_end, $this_start-1);
           say $LOG_FH "Skipping $name because start is greater than end: $start, $end";
@@ -139,6 +143,7 @@ while (<>) {
         else { # start-end (bed coords) are >=1
           ($short_var, $full_var) = get_variant($seqID, $prev_end + 1, $this_start - 1, "FWD");
         }
+
         if ($short_var =~ /WARN/){
           if ($verbose){
             say "== Skipping $name $short_var";
@@ -158,6 +163,8 @@ while (<>) {
       elsif ($this_start <= $prev_end && $up_or_dn =~ /DN$/) { # forward-reverse
         if ($verbose){say "BB: handling forward-reverse for $name; $this_start <= $prev_end && $up_or_dn"}
         my ($short_var, $full_var);
+        my ($short_var_fwd, $full_var_fwd); # to hold the reverse-complemented sequence from the REV-aligned region, for the gff
+
         if ( ($prev_end-1)-$this_start < 0 ) {
           my ($start, $end) = ($this_start, $prev_end-1);
           say $LOG_FH "Skipping $name because start is greater than end: $start, $end";
@@ -170,7 +177,9 @@ while (<>) {
         }
         else { # start-end (bed coords) are >=1
           ($short_var, $full_var) = get_variant($seqID, $this_start + 1, $prev_end - 1, "REV"); # seq here is reverse-complemented
+          ($short_var_fwd, $full_var_fwd) = get_variant($seqID, $this_start + 1, $prev_end - 1, "FWD"); # the orientation is "-" but we report "+" in gff, not reverse-complemented
         }
+
         if ($short_var =~ /WARN/){
           if ($verbose){
             say "== Skipping $name $short_var";
@@ -180,10 +189,10 @@ while (<>) {
           next;
         }
         else {
-          my $ninth = "ID=$gff_ID_prefix$name;Name=$name;ref_allele=$short_var";
+          my $ninth = "ID=$gff_ID_prefix$name;Name=$name;ref_allele=$short_var_fwd"; # note + orient
           unless ($seen_skippedID{$name}){
-            say $GFF_FH join("\t", $seqID, $gff_source, $gff_type, $this_start + 1, $prev_end - 1, ".", ".", "-", $ninth );
-            say $BED_FH join("\t", $seqID,                         $this_start,     $prev_end - 1, $name, $bitsc, "-", $full_var);
+            say $GFF_FH join("\t", $seqID, $gff_source, $gff_type, $this_start + 1, $prev_end - 1, ".", ".", "+", $ninth );        # note + orient
+            say $BED_FH join("\t", $seqID,                         $this_start,     $prev_end - 1, $name, $bitsc, "-", $full_var); # note - orient
           }
         }
       }
@@ -232,6 +241,7 @@ sub get_variant {
   }
   return($seq, $full_seq);
 }
+
 __END__
 
 Steven Cannon
@@ -241,3 +251,6 @@ Steven Cannon
 2025-02-05 Add orientation and score to BED output, and report rev-complimented sequence if mapping to negative strand
 2026-01-14 Change variable for identity, now calling it qcov_identity to distinguish it from percent identity
 2026-01-26 Change max_len to max_var_len; other cosmetic cleanup
+2026-02-17 Report all alleles in the gff relative to the positive strand. Leave the orientation in the bed file as-is, 
+             reflecting the orientation of the target sequence relative to the comparison genome.
+
