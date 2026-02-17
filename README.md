@@ -17,9 +17,8 @@ The output, which goes to the "work_dir/marker_to" directory, includes three rep
   * vigra.Weilv-9.gnm1.mrk.test.bed
   * vigra.Weilv-9.gnm1.mrk.test.gff3
 
-Note that the bed file will have orientations reflecting the target relative to the query around each marker.
-The markers and alleles are all reported in the molecule (FWD) orientation in the GFF, whereas in the 
-bed file, the alleles are reported for the "to" genome relative to the "from" genome around those markers.
+Note that the markers and alleles are all reported in the molecule (FWD) orientation in the GFF, whereas in
+the bed file, the alleles are reported for the "to" genome relative to the "from" genome around those markers.
 In the "report" file, the alleles are given both in the target FWD orientation and in the relative orientation:
 ```
                                               from
