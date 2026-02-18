@@ -9,17 +9,19 @@ marker in the second assembly.
 
 The output, which goes to the "work_dir/marker_to" directory, includes three report files:
 
-  * orient.vigra.VC1973A.gnm6.mrk.test--vigra.Weilv-9.gnm1.mrk.test.txt
-  * report.vigra.VC1973A.gnm6.mrk.test--vigra.Weilv-9.gnm1.mrk.test.tsv
-  * vigra.Weilv-9.gnm1.mrk.test.log
+  * orient.FROM_GNM--TO_GNM.txt
+  * report.FROM_GNM--TO_GNM.tsv
+  * TO_FILE.log
 
-... and two primary outputs:
-  * vigra.Weilv-9.gnm1.mrk.test.bed
-  * vigra.Weilv-9.gnm1.mrk.test.gff3
+... and three primary outputs:
+  * TO_GNM_abs.bed   # in molecule (absolute/FWD) orientation
+  * TO_GNM_rel.bed   # in relative orientation (relative between the FROM and TO genomes)
+  * TO_GNM.gff3
 
-Note that the markers and alleles are all reported in the molecule (FWD) orientation in the GFF, whereas in
-the BED file, the alleles are reported for the "to" genome relative to the "from" genome around those markers.
-In the "report" file, the alleles are given both in the target FWD orientation and in the relative orientation:
+Note that the markers and alleles are all reported in the molecule (FWD) orientation in the GFF
+and in the `_abs.bed` file, whereas in the `_rel.bed` file, the alleles are reported for the 
+"to" genome relative to the "from" genome around those markers. In the "report" file, the alleles 
+are given both in the target FWD orientation and in the relative orientation:
 ```
                                               from
                                                      to;BED
