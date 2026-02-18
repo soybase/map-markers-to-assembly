@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-version="2026-02-17"
+version="2026-02-18"
 
 # set -x  # uncomment for debugging
 set -o errexit -o errtrace -o nounset -o pipefail -o posix
@@ -342,8 +342,11 @@ echo "== Sort GFF and bed files"
 sort_gff.pl "$WD/marker_to/$marker_to.gff3" > "$WD/marker_to/tmp.gff"
 mv "$WD/marker_to/tmp.gff" "$WD/marker_to/$marker_to.gff3"
 
-sort -k1,1 -k2n,2n "$WD/marker_to/$marker_to.bed" > "$WD/marker_to/tmp.bed"
-mv "$WD/marker_to/tmp.bed" "$WD/marker_to/$marker_to.bed"
+sort -k1,1 -k2n,2n "$WD/marker_to/${marker_to}_abs.bed" > "$WD/marker_to/tmp_abs.bed"
+mv "$WD/marker_to/tmp_abs.bed" "$WD/marker_to/${marker_to}_abs.bed"
+
+sort -k1,1 -k2n,2n "$WD/marker_to/${marker_to}_rel.bed" > "$WD/marker_to/tmp_rel.bed"
+mv "$WD/marker_to/tmp_rel.bed" "$WD/marker_to/${marker_to}_rel.bed"
 
 echo
 echo "== Compare the initial and mapped markers and report"
@@ -354,8 +357,8 @@ echo "==   Marker report: $WD/marker_to/report.${MRK_FR_BARE}--${marker_to}.tsv"
 # Extract ID and allele from the "from" bed file, and print "+" orientation for all
 cat "$WD/marker_from/$MRK_FR_BARE.bed" | awk -v OFS="\t" '{print $4, "+", $5}' | sort > "$WD/marker_from/lis.$MRK_FR_BARE"
 
-# Extract ID, allele, and orientation from the "to" bed file
-cut -f4,6,7 "$WD/marker_to/$marker_to.bed" | sort > "$WD/blastout/lis.$marker_to"
+# Extract ID, allele, and orientation from the (relative) "to" bed file
+cut -f4,6,7 "$WD/marker_to/${marker_to}_rel.bed" | sort > "$WD/blastout/lis.$marker_to"
 
 # Generate a report that compares the markers and alleles in the "from" and "to" genomes.
 # The two lists below are three-column tables, containing:  marker, orient, allele
@@ -364,7 +367,7 @@ marker_report.pl "$WD/marker_from/lis.$MRK_FR_BARE" "$WD/blastout/lis.$marker_to
 
 echo
 echo "== Generate report of marker orientations"
-cat "$WD/marker_to/$marker_to.bed" | sort -k1,1 -k2n,2n |
+cat "$WD/marker_to/${marker_to}_rel.bed" | sort -k1,1 -k2n,2n |
    awk -v ORS=" " '$1 == prev {print $6; prev=$1} 
                    NR!=1 && $1 != prev {print "\n\n" $1 "\n" $6 ; prev=$1} 
                    NR==1 {print $1 "\n" $6 ; prev=$1}
@@ -372,7 +375,8 @@ cat "$WD/marker_to/$marker_to.bed" | sort -k1,1 -k2n,2n |
 
 echo
 echo "== Mapped markers:"
-echo "==   $WD/$work_dir/marker_to/$marker_to.bed"
+echo "==   $WD/$work_dir/marker_to/${marker_to}_abs.bed"
+echo "==   $WD/$work_dir/marker_to/${marker_to}_rel.bed"
 echo "==   $WD/$work_dir/marker_to/$marker_to.gff3"
 echo
 echo "== Run completed. Look for results at $work_dir/marker_to/"

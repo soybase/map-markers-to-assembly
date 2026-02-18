@@ -35,9 +35,9 @@ my $usage = <<EOS;
   Required:
     STDIN with BLAST output, created with -outfmt "6 std qlen qcovhsp"
     -genome      Target genome file in which variants are to be mapped (uncompressed)
-    -out         Name for new marker files, sans extension. Three files will be written: .bed, .gff3, .log
-                 Note that the bed file will have orientations reflecting the query and target around each marker,
-                 whereas the gff file will have only "+" orientations, with alleles reverse-complemented
+    -out         Name for new marker files, sans extension. Four files will be written: _abs.bed, _rel.bed, .gff3, .log
+                 Note that the _rel.bed file will have orientations reflecting the query and target around each marker,
+                 whereas the _abs.bed and the gff file will have only "+" orientations, with alleles reverse-complemented
                  where the query and target around a marker were in opposite orientations.
     
   Options:   
@@ -85,9 +85,10 @@ die "Can't open in $genome_file: $!\n" unless (-f $genome_file);
 my $gff_file_base = $out_file;
 $gff_file_base =~ s/\.gff3?$//;
 
-my ($GFF_FH, $BED_FH, $LOG_FH);
+my ($GFF_FH, $BED_ABS_FH, $BED_REL_FH, $LOG_FH);
 open ( $GFF_FH, ">", "$gff_file_base.gff3" ) or die "Can't open out $gff_file_base.gff3: $!\n";
-open ( $BED_FH, ">", "$gff_file_base.bed") or die "Can't open out $gff_file_base.bed: $!\n";
+open ( $BED_ABS_FH, ">", "${gff_file_base}_abs.bed") or die "Can't open out ${gff_file_base}_abs.bed: $!\n";
+open ( $BED_REL_FH, ">", "${gff_file_base}_rel.bed") or die "Can't open out ${gff_file_base}_rel.bed: $!\n";
 open ( $LOG_FH, ">", "$gff_file_base.log") or die "Can't open out $gff_file_base.log: $!\n";
 
 my $REX;
@@ -135,28 +136,38 @@ while (<>) {
           say $LOG_FH "Skipping $name because start is greater than end: $start, $end";
           next;
         }
-        elsif ( ($this_start-1)-$prev_end == 0 ) { # marker is of zero length - probably an indel
+        elsif ( ($this_start-1)-$prev_end == 0 ) { 
           ($short_var, $full_var) = ("_", "_");
           if ($verbose){say "AA:   $this_start-1, $prev_end, $short_var";}
+          say $LOG_FH "Skipping $name because marker is of zero length in the TO genome -- perhaps a deletion";
           $prev_end--; # adjust the start coord to preserve the (collapsed) marker
         }
         else { # start-end (bed coords) are >=1
           ($short_var, $full_var) = get_variant($seqID, $prev_end + 1, $this_start - 1, "FWD");
-        }
 
-        if ($short_var =~ /WARN/){
-          if ($verbose){
-            say "== Skipping $name $short_var";
+          if ($short_var =~ /WARN/){
+            if ($verbose){
+              say "== Skipping $name $short_var";
+            }
+            say $LOG_FH "Skipping $name $short_var";
+            unless ($seen_skippedID{$name}){ $seen_skippedID{$name}++; }
+            next;
           }
-          say $LOG_FH "Skipping $name $short_var";
-          unless ($seen_skippedID{$name}){ $seen_skippedID{$name}++; }
-          next;
-        }
-        else {
-          my $ninth = "ID=$gff_ID_prefix$name;Name=$name;ref_allele=$short_var";
-          unless ($seen_skippedID{$name}){
-            say $GFF_FH join("\t", $seqID, $gff_source, $gff_type, $prev_end + 1, $this_start - 1, ".", ".", "+", $ninth );
-            say $BED_FH join("\t", $seqID,                         $prev_end,     $this_start - 1, $name, $bitsc, "+", $full_var);
+          elsif ($full_var =~ /WARN/){
+            if ($verbose){
+              say "== Skipping $name $full_var";
+            }
+            say $LOG_FH "Skipping $name $full_var";
+            unless ($seen_skippedID{$name}){ $seen_skippedID{$name}++; }
+            next;
+          }
+          else {
+            my $ninth = "ID=$gff_ID_prefix$name;Name=$name;ref_allele=$short_var";
+            unless ($seen_skippedID{$name}){
+              say $GFF_FH     join("\t", $seqID, $gff_source, $gff_type, $prev_end + 1, $this_start - 1, ".", ".",      "+", $ninth );
+              say $BED_ABS_FH join("\t", $seqID,                         $prev_end,     $this_start - 1, $name, $bitsc, "+", $full_var);
+              say $BED_REL_FH join("\t", $seqID,                         $prev_end,     $this_start - 1, $name, $bitsc, "+", $full_var);
+            }
           }
         }
       } 
@@ -170,29 +181,39 @@ while (<>) {
           say $LOG_FH "Skipping $name because start is greater than end: $start, $end";
           next;
         }
-        elsif ( ($prev_end-1)-$this_start == 0 ) { # marker is of zero length - probably an indel
+        elsif ( ($prev_end-1)-$this_start == 0 ) {
           ($short_var, $full_var) = ("_", "_");
           if ($verbose){say "BB:   $this_start-1, $prev_end, $short_var";}
+          say $LOG_FH "Skipping $name because marker is of zero length in the TO genome -- perhaps a deletion";
           $this_start--; # adjust the start coord to preserve the (collapsed) marker
         }
         else { # start-end (bed coords) are >=1
           ($short_var, $full_var) = get_variant($seqID, $this_start + 1, $prev_end - 1, "REV"); # seq here is reverse-complemented
           ($short_var_fwd, $full_var_fwd) = get_variant($seqID, $this_start + 1, $prev_end - 1, "FWD"); # the orientation is "-" but we report "+" in gff, not reverse-complemented
-        }
 
-        if ($short_var =~ /WARN/){
-          if ($verbose){
-            say "== Skipping $name $short_var";
+          if ($short_var =~ /WARN/){
+            if ($verbose){
+              say "== Skipping $name $short_var";
+            }
+            say $LOG_FH "Skipping $name $short_var";
+            unless ($seen_skippedID{$name}){ $seen_skippedID{$name}++; }
+            next;
           }
-          say $LOG_FH "Skipping $name $short_var";
-          unless ($seen_skippedID{$name}){ $seen_skippedID{$name}++; }
-          next;
-        }
-        else {
-          my $ninth = "ID=$gff_ID_prefix$name;Name=$name;ref_allele=$short_var_fwd"; # note + orient
-          unless ($seen_skippedID{$name}){
-            say $GFF_FH join("\t", $seqID, $gff_source, $gff_type, $this_start + 1, $prev_end - 1, ".", ".", "+", $ninth );        # note + orient
-            say $BED_FH join("\t", $seqID,                         $this_start,     $prev_end - 1, $name, $bitsc, "-", $full_var); # note - orient
+          elsif ($full_var =~ /WARN/){
+            if ($verbose){
+              say "== Skipping $name $full_var";
+            }
+            say $LOG_FH "Skipping $name $full_var";
+            unless ($seen_skippedID{$name}){ $seen_skippedID{$name}++; }
+            next;
+          }
+          else {
+            my $ninth = "ID=$gff_ID_prefix$name;Name=$name;ref_allele=$short_var_fwd"; # note + orient
+            unless ($seen_skippedID{$name}){
+              say $GFF_FH     join("\t", $seqID, $gff_source, $gff_type, $this_start + 1, $prev_end - 1, ".", ".",      "+", $ninth );       # note + orient
+              say $BED_ABS_FH join("\t", $seqID,                         $this_start,     $prev_end - 1, $name, $bitsc, "+", $full_var_fwd); # note + orient
+              say $BED_REL_FH join("\t", $seqID,                         $this_start,     $prev_end - 1, $name, $bitsc, "-", $full_var);     # note - orient
+            }
           }
         }
       }
@@ -253,4 +274,5 @@ Steven Cannon
 2026-01-26 Change max_len to max_var_len; other cosmetic cleanup
 2026-02-17 Report all alleles in the gff relative to the positive strand. Leave the orientation in the bed file as-is, 
              reflecting the orientation of the target sequence relative to the comparison genome.
-
+2026-02-18 Add another bed file, giving one with orientation and alleles relative to the chromosome (_abs.bed) and one
+             reflecting the alignment orientation (_rel.bed). The gff has orientation and allele relative to the chromosome.
