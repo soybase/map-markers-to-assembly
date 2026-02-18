@@ -1,3 +1,3 @@
 # Ignore the following
-/work_dir/
+/work_*/
 /data/
