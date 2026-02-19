@@ -87,6 +87,9 @@ the `${marker_to}_abs.bed` file, like so:
                           --reference $to_genome \
                           --output lifted_variants.vcf
 ```
+The `liftover_vcf.pl` script is quick, so can be run in interactive mode rather than via SLURM batch script; 
+however, if running it interactively, you will need to activate the `map-markers` conda environment (see details below).
+Or it could be run via a batch script.
 
 ## Config file
 Specify paths to the "from" and "to" genome assemblies and the (gff3) marker file.
