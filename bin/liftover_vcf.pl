@@ -220,44 +220,63 @@ sub process_vcf {
 
 sub write_modified_header {
     my ($out_fh, $header_lines, $contig_lengths) = @_;
-    
+
+    my @metadata_lines;
+    my @column_header_lines;
+
+    # Separate metadata lines (##) from column header lines (#CHROM, etc.)
+    for my $line (@$header_lines) {
+        if ($line =~ /^##/) {
+            push @metadata_lines, $line;
+        } else {
+            push @column_header_lines, $line;
+        }
+    }
+
+    # Write metadata lines with modifications
     my $reference_written = 0;
     my $contig_written = 0;
-    
-    for my $line (@$header_lines) {
-        # Replace reference line
+
+    for my $line (@metadata_lines) {
         if ($line =~ /^##reference=/) {
+            # Replace reference line
             print $out_fh "##reference=$reference_file\n";
             $reference_written = 1;
         }
-        # Skip existing contig lines - we'll write new ones
         elsif ($line =~ /^##contig=/) {
-            # Skip existing contig lines
+            # Skip existing contig lines - we'll write new ones later
             next;
         }
-        # Write contig lines after fileformat but before other headers
-        elsif ($line =~ /^##fileformat=/ || ($line =~ /^##/ && !$contig_written && $reference_written)) {
+        else {
+            # Write other metadata lines as-is
             print $out_fh "$line\n";
-            
-            # Write contig lines after fileformat and reference
-            if ($reference_written && !$contig_written) {
-                write_contig_lines($out_fh, $contig_lengths);
-                $contig_written = 1;
+
+            # Write reference and contig lines after fileformat
+            if ($line =~ /^##fileformat=/) {
+                if (!$reference_written) {
+                    print $out_fh "##reference=$reference_file\n";
+                    $reference_written = 1;
+                }
+                if (!$contig_written) {
+                    write_contig_lines($out_fh, $contig_lengths);
+                    $contig_written = 1;
+                }
             }
         }
-        else {
-            print $out_fh "$line\n";
-        }
     }
-    
-    # Add reference line if it wasn't in original header
+
+    # Add reference and contig lines if they weren't written yet
+    # (in case there was no ##fileformat line)
     if (!$reference_written) {
         print $out_fh "##reference=$reference_file\n";
     }
-    
-    # Add contig lines if not written yet
     if (!$contig_written) {
         write_contig_lines($out_fh, $contig_lengths);
+    }
+
+    # Finally, write the column header lines (#CHROM, etc.)
+    for my $line (@column_header_lines) {
+        print $out_fh "$line\n";
     }
 }
 
