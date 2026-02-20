@@ -53,7 +53,7 @@ The dependencies (see installation instructions below) are:
   * BioPerl
   * blast or burst (blast preferred)
 
-and seven scripts in the bin directory:
+and eight scripts in the bin directory:
   * map-markers.sh
   * marker_blast_to_gff.pl
   * marker_gff_to_bed_and_var.pl
@@ -61,6 +61,7 @@ and seven scripts in the bin directory:
   * top_line.awk
   * sort_gff.pl
   * filter_fasta_for_Ns.awk
+  * liftover_vcf.pl
 
 ```bash
 NAME
@@ -76,6 +77,19 @@ SYNOPSIS
   Options: -h help
 
 ```
+
+The script `liftover_vcf.pl` is a utility that can be run after `map-markers.sh` to update coordinates and
+alleles in a VCF file, projecting from the `$from_genome` to the `$to_genome`. The script use as an input 
+the `${marker_to}_abs.bed` file, like so:
+```
+    ./bin/liftover_vcf.pl --vcf variants.vcf.gz \
+                          --bed work_dir/marker_to/${marker_to}_abs.bed \
+                          --reference $to_genome \
+                          --output lifted_variants.vcf
+```
+The `liftover_vcf.pl` script is quick, so can be run in interactive mode rather than via SLURM batch script; 
+however, if running it interactively, you will need to activate the `map-markers` conda environment (see details below).
+Or it could be run via a batch script.
 
 ## Config file
 Specify paths to the "from" and "to" genome assemblies and the (gff3) marker file.
