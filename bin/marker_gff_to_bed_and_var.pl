@@ -106,6 +106,13 @@ else {
   open ( $MRK_FH, "<", $marker_file ) or die "Can't open in $marker_file: $!\n";
 }
 
+my $warn_bad_seqID = <<WARN_MSG;
+  The seqID is not found in the seqID_len hash, which is populated from the file 
+  $genome_file.fai
+  This can happen if the seqID in the provided gff3 file doesn't match the \"genome_from\".
+  Please check the molecule IDs in \"marker_from\" and \"genome_from\"
+WARN_MSG
+
 # Read in the GFF;
 while (<$MRK_FH>) {
   s/\r?\n\z//; # CRLF to LF
@@ -134,6 +141,10 @@ while (<$MRK_FH>) {
       say "== BB: mrk_end:\t$mrk_end";
       say "== BB: pad:\t$pad";
       say "";
+    }
+
+    if (!exists($seqID_len{$seqID})) {
+      die "\n\nWARNING:\n$warn_bad_seqID\n  The missing seqID is $seqID\n\n";
     }
 
     my $pad_end = min($mrk_end+$pad, $seqID_len{$seqID});
@@ -179,3 +190,4 @@ Steven Cannon
 2025-01-28 Make reporting of variant sequence non-optional
 2025-01-31 Report two types of BED files -- one with .UP and .DN for each marker, and one with the seq variant
 2026-01-13 Add parameter min_flank and suppress printing sequences that are below this value
+2026-02-24 Add error check and diagnostic message
