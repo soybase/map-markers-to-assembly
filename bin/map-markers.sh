@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-version="2026-02-18"
+version="2026-02-24"
 
 # set -x  # uncomment for debugging
 set -o errexit -o errtrace -o nounset -o pipefail -o posix
@@ -164,10 +164,6 @@ GNM_TO_BASE=$(basename "$genome_to" .gz)
 # Strip suffix such as .fa, .fasta, .fna
 GNM_FROM_BASE="${GNM_FROM_BASE%.*}"
 GNM_TO_BASE="${GNM_TO_BASE%.*}"
-
-if [ ! -f  "${WD}/marker_from/$MRK_BASE".gz ]; then
-  cp "$marker_from" "${WD}/marker_from/$MRK_BASE".gz || exit
-fi
 
 if [ ! -f "${WD}/genome_from/$GNM_FROM_BASE".gz ] || [ ! -f "${WD}/genome_from/$GNM_FROM_BASE" ]; then
   cp "$genome_from" "${WD}/genome_from/$GNM_FROM_BASE".gz || exit
